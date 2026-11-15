@@ -49,6 +49,7 @@ class CommandBtoC:
     constraints: list[str] = field(default_factory=list)
     source_package_trigger: Optional[str] = None
     created_at: str = ""
+    session_id: Optional[str] = None
 
 
 @dataclass
@@ -63,7 +64,7 @@ class DecisionResult:
 class ModuleBConfig:
     """Пороги и параметры Модуля B (ПЗ Короля + контракты A)."""
 
-    MIN_EVENTS_IN_WINDOW: int = 3
+    MIN_EVENTS_IN_WINDOW: int = 2
 
     # R1: показ hints / help panel после ошибок
     ERROR_COUNT_FOR_HINTS: int = 2
@@ -77,16 +78,16 @@ class ModuleBConfig:
     # R2: увеличение шрифта после help
     HELP_COUNT_FOR_FONT: int = 3
     FONT_TARGET_ID: str = "main_content"
-    FONT_PROPERTY: str = "fontSize"
+    FONT_PROPERTY: str = "font_size"
     FONT_OLD: Any = 14
     FONT_NEW: Any = 16
     RULE_FONT_ON_HELP: str = "R_enlarge_font_on_help"
 
     # R3: сворачивание редко используемого блока
-    COLLAPSE_TARGET_ID: str = "history_panel"
-    COLLAPSE_PROPERTY: str = "collapsed"
-    COLLAPSE_OLD: Any = False
-    COLLAPSE_NEW: Any = True
+    COLLAPSE_TARGET_ID: str = "history_content"
+    COLLAPSE_PROPERTY: str = "visible"
+    COLLAPSE_OLD: Any = True
+    COLLAPSE_NEW: Any = False
     RULE_COLLAPSE_HISTORY: str = "R_collapse_history_on_help_without_check"
     HELP_FOR_COLLAPSE: int = 3
 

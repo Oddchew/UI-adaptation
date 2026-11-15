@@ -9,4 +9,4 @@ readme = "README.md"
 sc = ["py-sc-client>=0.4.0"]
 
 [tool.setuptools.packages.find]
-include = ["module_a*", "module_b*"]
+include = ["module_a*", "module_b*", "module_c*"]

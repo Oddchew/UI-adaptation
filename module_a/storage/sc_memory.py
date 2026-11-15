@@ -126,6 +126,9 @@ class ScMemoryStorage(IStorage):
     def _marker_events_index(self, user_id: str) -> str:
         return f"{self.idtf_prefix}events_idx:{user_id}"
 
+    def _marker_history_index(self, user_id: str) -> str:
+        return f"{self.idtf_prefix}history_idx:{user_id}"
+
     # ------------------------------------------------------------------ low-level API
     def _create_string_link(self, content: str) -> Any:
         """Создать sc-link со строковым содержимым без SCs-парсера."""
@@ -145,7 +148,8 @@ class ScMemoryStorage(IStorage):
         from sc_client.client import set_link_contents  # type: ignore
         from sc_client.models import ScLinkContent, ScLinkContentType  # type: ignore
 
-        set_link_contents(ScLinkContent(content, ScLinkContentType.STRING, addr))
+        if not set_link_contents(ScLinkContent(content, ScLinkContentType.STRING, addr)):
+            raise RuntimeError('SC link update failed')
 
     def _search_links(self, content: str) -> list[Any]:
         from sc_client.client import search_links_by_contents  # type: ignore
@@ -210,17 +214,39 @@ class ScMemoryStorage(IStorage):
         payload["__marker__"] = marker
         raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
         if len(raw) > 500_000:
-            raw = raw[:500_000]
-
-        # удалить старые link'и с этим marker
+            raise ValueError('SC payload exceeds 500000 characters')
         old = self._search_links(marker)
+        if len(old) > 1:
+            raise RuntimeError('ambiguous SC marker')
         if old:
-            self._erase(old)
-
-        marker_addr = self._create_string_link(marker)
+            payload_links = self._payload_links(old[0])
+            if len(payload_links) > 1:
+                raise RuntimeError('ambiguous SC payload')
+            if payload_links:
+                self._set_link_string(payload_links[0], raw)
+                self._payload_by_marker[marker] = payload_links[0]
+                return [old[0], payload_links[0]]
+            marker_addr = old[0]
+        else:
+            marker_addr = self._create_string_link(marker)
         payload_addr = self._create_string_link(raw)
+        from sc_client.client import generate_elements
+        from sc_client.constants import sc_type
+        from sc_client.models import ScConstruction
+        construction = ScConstruction()
+        construction.generate_connector(sc_type.CONST_PERM_POS_ARC, marker_addr, payload_addr)
+        if not generate_elements(construction):
+            raise RuntimeError('failed to link marker and payload')
         self._payload_by_marker[marker] = payload_addr
         return [marker_addr, payload_addr]
+
+    def _payload_links(self, marker_addr: Any) -> list[Any]:
+        from sc_client.client import search_by_template
+        from sc_client.constants import sc_type
+        from sc_client.models import ScTemplate
+        template = ScTemplate()
+        template.triple(marker_addr, sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE_LINK >> '_payload')
+        return [row.get('_payload') for row in search_by_template(template)]
 
     def _read_json_by_marker(self, marker: str) -> Optional[dict[str, Any]]:
         # 1) локальный индекс (тот же процесс / тот же storage)
@@ -240,9 +266,19 @@ class ScMemoryStorage(IStorage):
         if not marker_links and addr is None:
             return None
 
-        # 3) fallback: точный search JSON-строки невозможен без знания полного content;
-        #    если payload был записан в этой сессии — уже покрыто п.1
-        return None
+        if len(marker_links) != 1:
+            raise RuntimeError('ambiguous SC marker')
+        payloads = self._payload_links(marker_links[0])
+        if not payloads:
+            return None
+        if len(payloads) != 1:
+            raise RuntimeError('ambiguous SC payload')
+        data = self._get_link_data(payloads[0])
+        obj = json.loads(data) if data else None
+        if not isinstance(obj, dict) or obj.get('__marker__') != marker:
+            raise RuntimeError('SC payload marker mismatch')
+        self._payload_by_marker[marker] = payloads[0]
+        return obj
 
     def _soft(self, op: str, err: Exception) -> None:
         logger.warning("ScMemoryStorage.%s: %s", op, err)
@@ -265,9 +301,6 @@ class ScMemoryStorage(IStorage):
         self._ensure()
         try:
             marker = self._marker_model(model.user_id)
-            old = self._model_addrs.get(model.user_id) or []
-            if old:
-                self._erase(old)
             addrs = self._write_json_payload(marker, _to_jsonable(model))
             self._model_addrs[model.user_id] = addrs
         except Exception as e:
@@ -283,7 +316,8 @@ class ScMemoryStorage(IStorage):
             idx_marker = self._marker_events_index(event.user_id)
             idx = self._read_json_by_marker(idx_marker) or {"ids": []}
             ids = list(idx.get("ids") or [])
-            ids.append(event.id)
+            if event.id not in ids:
+                ids.append(event.id)
             if len(ids) > 500:
                 ids = ids[-500:]
             self._write_json_payload(
@@ -343,6 +377,12 @@ class ScMemoryStorage(IStorage):
             marker = self._marker_history(result.user_id, result.request_id)
             addrs = self._write_json_payload(marker, _to_jsonable(result))
             self._history_addrs.setdefault(result.user_id, []).extend(addrs)
+            idx_marker = self._marker_history_index(result.user_id)
+            idx = self._read_json_by_marker(idx_marker) or {'ids': []}
+            ids = list(idx.get('ids') or [])
+            if result.request_id not in ids:
+                ids.append(result.request_id)
+            self._write_json_payload(idx_marker, {'ids': ids, 'user_id': result.user_id})
         except Exception as e:
             self._soft("save_adaptation_result", e)
 
@@ -352,13 +392,11 @@ class ScMemoryStorage(IStorage):
         self._ensure()
         try:
             results: list[AdaptationResult] = []
-            for addr in self._history_addrs.get(user_id, []):
-                data = self._get_link_data(addr)
-                if not data or not data.strip().startswith("{"):
-                    continue
+            idx = self._read_json_by_marker(self._marker_history_index(user_id)) or {'ids': []}
+            for request_id in idx.get('ids', [])[-limit:]:
                 try:
-                    obj = json.loads(data)
-                    if obj.get("user_id") == user_id:
+                    obj = self._read_json_by_marker(self._marker_history(user_id, request_id))
+                    if obj and obj.get("user_id") == user_id:
                         results.append(self._dict_to_result(obj))
                 except Exception:
                     continue
@@ -434,6 +472,8 @@ class ScMemoryStorage(IStorage):
                 theme=_enum(ThemePreference, pref.get("theme")),
             ),
             adaptation_history=hist,
+            hint_hidden_sessions=list(d.get("hint_hidden_sessions") or []),
+            manual_mode_sessions=list(d.get("manual_mode_sessions") or []),
         )
 
     def _dict_to_event(self, d: dict[str, Any]) -> InteractionEvent:
@@ -481,4 +521,13 @@ class ScMemoryStorage(IStorage):
             new_value=d.get("new_value"),
             reason=d.get("reason"),
             error_message=d.get("error_message"),
+            status=d.get("status"),
+            event_id=d.get("event_id"),
+            source_event_ids=list(d.get("source_event_ids") or []),
+            version_before=d.get("version_before"),
+            version_after=d.get("version_after"),
+            duration_ms=d.get("duration_ms"),
+            recovery_required=bool(d.get("recovery_required", False)),
+            outcome_type=d.get("outcome_type", "adaptation"),
+            session_id=d.get("session_id"),
         )

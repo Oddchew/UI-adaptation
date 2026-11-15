@@ -120,6 +120,7 @@ DEFAULT_RULES: list[AdaptationRule] = [
     ),
     AdaptationRule(
         id="R_hint_on_error_rate",
+        enabled=False,
         description="Показать подсказки при высоком error_rate",
         priority=1,
         respect_hint_hidden=True,
@@ -133,12 +134,13 @@ DEFAULT_RULES: list[AdaptationRule] = [
     ),
     AdaptationRule(
         id="R_enlarge_font_on_help",
+        enabled=False,
         description="Увеличить шрифт после нескольких запросов помощи",
         priority=2,
         trigger=RuleTrigger(kind=TriggerKind.HELP_COUNT, threshold=3, op=CompareOp.GTE),
         action=RuleAction(
             target_element_id="main_content",
-            property="fontSize",
+            property="font_size",
             old_value=14,
             new_value=16,
         ),
@@ -154,10 +156,10 @@ DEFAULT_RULES: list[AdaptationRule] = [
             require_no_success=True,
         ),
         action=RuleAction(
-            target_element_id="history_panel",
-            property="collapsed",
-            old_value=False,
-            new_value=True,
+            target_element_id="history_content",
+            property="visible",
+            old_value=True,
+            new_value=False,
         ),
     ),
 ]

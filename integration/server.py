@@ -38,9 +38,9 @@ from module_a import (  # noqa: E402
     InteractionEvent,
     ModuleA,
     ModuleAConfig,
-    MockModuleC,
 )
 from module_b import ModuleB  # noqa: E402 — реальный модуль B, не заглушка
+from module_c import ModuleC, SQLiteRepository, default_model, display_state
 
 STATIC = Path(__file__).resolve().parent / "static"
 PORT = int(os.environ.get("MODULE_A_PORT", "8765"))
@@ -52,10 +52,36 @@ RULES_PATH = os.environ.get("ADAPTATION_RULES", "").strip()
 _loop: Optional[asyncio.AbstractEventLoop] = None
 _module_a: Optional[ModuleA] = None
 _module_b: Optional[ModuleB] = None
-_module_c: Optional[MockModuleC] = None
+_module_c: Optional[ModuleC] = None
+_repository = None
+_runtime = None
 _packages: list[dict[str, Any]] = []
 _ready = False
 _sc_ok = False
+
+
+class BrowserRuntime:
+    def __init__(self):
+        self.pending = {}
+
+    async def activate(self, interface_id, model, *, user_id=None, session_id=None):
+        token = uuid.uuid4().hex
+        future = asyncio.get_running_loop().create_future()
+        self.pending[token] = (interface_id, model, future, user_id, session_id)
+        try:
+            if not await future:
+                raise RuntimeError('browser rejected update')
+        finally:
+            self.pending.pop(token, None)
+
+    def commands(self, user_id, session_id):
+        return [{'token': token, 'interface_id': item[0], 'model': display_state(item[1])}
+                for token, item in self.pending.items() if item[3] == user_id and item[4] == session_id]
+
+    def acknowledge(self, token, success):
+        item = self.pending.get(token)
+        if item and not item[2].done():
+            item[2].set_result(success)
 
 
 def _now() -> str:
@@ -69,10 +95,10 @@ def _run(coro):
 
 
 async def _bootstrap() -> None:
-    global _module_a, _module_b, _module_c, _ready, _sc_ok
+    global _module_a, _module_b, _module_c, _ready, _sc_ok, _runtime, _repository
 
     cfg = ModuleAConfig(
-        COLD_START_THRESHOLD=8,
+        COLD_START_THRESHOLD=2,
         ERROR_RATE_THRESHOLD=0.25,
         HELP_THRESHOLD=3,
         PERIODIC_SNAPSHOT_MS=10 * 60 * 1000,
@@ -102,10 +128,15 @@ async def _bootstrap() -> None:
         else:
             print("[module-b] built-in DEFAULT_RULES")
     _module_b = ModuleB(rules=rules_src)
-    _module_c = MockModuleC()
+    _repository = SQLiteRepository(os.environ.get('MODULE_C_DB', str(ROOT / 'module_c.sqlite3')))
+    if not await _repository.current('python_tutor_model'):
+        _repository.register('python_tutor_model', default_model())
+    _runtime = BrowserRuntime()
+    _module_c = ModuleC(_repository, _runtime)
+    _module_b.set_version_provider(_module_c.active_version)
 
     async def on_cmd(cmd):
-        await _module_c.apply(cmd)
+        return await _module_c.apply(cmd)
 
     _module_b.set_command_handler(on_cmd)
 
@@ -113,6 +144,13 @@ async def _bootstrap() -> None:
         await _module_a.handle_application_result(result)
 
     _module_c.set_application_handler(on_app)
+
+    async def retry_outcomes():
+        while True:
+            await _module_c.retry_notifications()
+            await asyncio.sleep(5)
+
+    asyncio.create_task(retry_outcomes())
 
     async def on_pkg(pkg):
         _packages.append(
@@ -211,7 +249,16 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/ui-state":
             assert _module_c is not None
-            _json_response(self, 200, {"ui": _module_c.get_ui_state(), "packages": _packages[-10:]})
+            query = parse_qs(parsed.query)
+            current = _run(_module_c.state('python_tutor_model', query.get('user_id', [None])[0], query.get('session_id', [None])[0]))
+            _json_response(self, 200, {"ui": display_state(current[1]), "version": current[0], "packages": _packages[-10:]})
+            return
+
+        if path == '/api/runtime/pending':
+            query = parse_qs(parsed.query)
+            async def pending():
+                return _runtime.commands(query.get('user_id', [None])[0], query.get('session_id', [None])[0])
+            _json_response(self, 200, {'commands': _run(pending())})
             return
 
         if path.startswith("/api/model/"):
@@ -257,6 +304,14 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if path == '/api/runtime/ack':
+            data = _read_json(self)
+            async def ack():
+                _runtime.acknowledge(data.get('token'), data.get('success') is True)
+            _run(ack())
+            _json_response(self, 200, {'ok': True})
+            return
+
         if path == "/api/event":
             if not _ready or _module_a is None:
                 _json_response(self, 503, {"error": "not ready"})
@@ -279,6 +334,7 @@ class Handler(BaseHTTPRequestHandler):
                 interface_id=data.get("interface_id") or "ui_demo",
                 timestamp=data.get("timestamp") or _now(),
                 event_type=et,
+                session_id=data.get('session_id'),
                 element_id=data.get("element_id"),
                 error_code=data.get("error_code"),
                 message=data.get("message"),
@@ -301,7 +357,7 @@ class Handler(BaseHTTPRequestHandler):
                 200,
                 {
                     "ok": True,
-                    "ui": _module_c.get_ui_state(),
+                    "ui": display_state(_run(_module_c.state(event.interface_id, event.user_id, event.session_id))[1]),
                     "packages": _packages[-5:],
                     "model": {
                         "version": model.model_version if model else None,

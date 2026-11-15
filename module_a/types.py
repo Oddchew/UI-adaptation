@@ -5,6 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Optional
+import json
+
+
+def session_key(interface_id: str, session_id: Optional[str]) -> str:
+    return json.dumps([interface_id, session_id or 'default'], ensure_ascii=False, separators=(',', ':'))
 
 
 class ExperienceLevel(str, Enum):
@@ -41,6 +46,7 @@ class EventType(str, Enum):
     BLUR = "blur"
     MANUAL_OVERRIDE = "manual_override"
     TIME_SPENT = "time_spent"
+    HINT_HIDE = "hint_hide"
 
 
 class PackageTrigger(str, Enum):
@@ -93,6 +99,15 @@ class AdaptationResult:
     new_value: Any = None
     reason: Optional[str] = None
     error_message: Optional[str] = None
+    status: Optional[str] = None
+    event_id: Optional[str] = None
+    source_event_ids: list[str] = field(default_factory=list)
+    version_before: Optional[str] = None
+    version_after: Optional[str] = None
+    duration_ms: Optional[int] = None
+    recovery_required: bool = False
+    outcome_type: str = 'adaptation'
+    session_id: Optional[str] = None
 
 
 @dataclass
@@ -145,6 +160,8 @@ class UserModel:
     observation: ObservationWindow = field(default_factory=ObservationWindow)
     preferences: UserPreferences = field(default_factory=UserPreferences)
     adaptation_history: list[AdaptationResult] = field(default_factory=list)
+    hint_hidden_sessions: list[str] = field(default_factory=list)
+    manual_mode_sessions: list[str] = field(default_factory=list)
 
 
 @dataclass

@@ -22,6 +22,7 @@ from .types import (
     ObservationWindow,
     UserPreferences,
     EventType,
+    session_key,
 )
 from .validation import validate_adaptation_result, validate_interaction_event
 
@@ -97,8 +98,18 @@ class UserModelManager:
             model.counters.block_opens += 1
         elif et == EventType.BLOCK_CLOSE:
             model.counters.block_closes += 1
+        elif et == EventType.HINT_HIDE:
+            session = session_key(event.interface_id, event.session_id)
+            if session not in model.hint_hidden_sessions:
+                model.hint_hidden_sessions.append(session)
         elif et == EventType.MANUAL_OVERRIDE:
             model.counters.manual_overrides += 1
+            if event.property == 'adaptation_mode':
+                context = session_key(event.interface_id, event.session_id)
+                if event.new_value == 'manual' and context not in model.manual_mode_sessions:
+                    model.manual_mode_sessions.append(context)
+                elif event.new_value in ('automatic', 'combined') and context in model.manual_mode_sessions:
+                    model.manual_mode_sessions.remove(context)
             if event.property == "theme" and isinstance(event.new_value, str):
                 try:
                     model.preferences.theme = ThemePreference(event.new_value)
@@ -176,6 +187,9 @@ class UserModelManager:
     async def record_adaptation_result(self, raw: AdaptationResult) -> UserModel:
         result = validate_adaptation_result(raw)
         async with self._lock_for(result.user_id):
+            existing = await self.storage.get_adaptation_history(result.user_id, 100)
+            if any(item.request_id == result.request_id and item.outcome_type == result.outcome_type for item in existing):
+                return await self.get_or_create_model(result.user_id)
             await self.storage.save_adaptation_result(result)
             model = await self.get_or_create_model(result.user_id)
             model.adaptation_history = await self.storage.get_adaptation_history(
@@ -186,20 +200,36 @@ class UserModelManager:
             await self.storage.save_user_model(model)
             return model
 
-    async def get_events_in_window(self, user_id: str) -> list[InteractionEvent]:
+    async def get_events_in_window(self, user_id: str, interface_id: str | None = None, session_id: str | None = None) -> list[InteractionEvent]:
+        if interface_id and session_id:
+            return [e for e in await self.storage.get_events(user_id) if e.session_id == session_id and e.interface_id == interface_id]
         model = await self.get_or_create_model(user_id)
-        return await self.storage.get_events(
+        events = await self.storage.get_events(
             user_id,
             from_ts=model.observation.window_start,
             to_ts=model.observation.window_end,
         )
+        if events and events[-1].session_id:
+            last = events[-1]
+            return [e for e in await self.storage.get_events(user_id) if e.session_id == last.session_id and e.interface_id == last.interface_id]
+        return events
 
     async def should_send_package(
-        self, user_id: str, force: bool = False
+        self, user_id: str, force: bool = False, event: InteractionEvent | None = None
     ) -> tuple[bool, str]:
         if force:
             return True, "force"
         model = await self.get_or_create_model(user_id)
+        events = await self.get_events_in_window(user_id, event.interface_id if event else None, event.session_id if event else None)
+        if events and (events[-1].event_type == EventType.HINT_HIDE or
+                       (events[-1].event_type == EventType.BLOCK_OPEN and events[-1].element_id == 'history_content') or
+                       (events[-1].event_type == EventType.MANUAL_OVERRIDE and events[-1].property == 'adaptation_mode')):
+            return True, "threshold"
+        errors = [e for e in events if e.event_type == EventType.ERROR and e.error_code]
+        if errors:
+            last = errors[-1]
+            if sum(1 for e in errors if (e.session_id, e.interface_id, e.element_id, e.error_code) == (last.session_id, last.interface_id, last.element_id, last.error_code)) >= 2:
+                return True, "threshold"
         if (
             not model.cold_start_notified
             and model.counters.total_events >= self.config.COLD_START_THRESHOLD
@@ -207,7 +237,6 @@ class UserModelManager:
             return True, "cold_start"
         if model.observation.recent_error_rate >= self.config.ERROR_RATE_THRESHOLD:
             return True, "threshold"
-        events = await self.get_events_in_window(user_id)
         help_n = sum(1 for e in events if e.event_type == EventType.HELP_REQUEST)
         if help_n >= self.config.HELP_THRESHOLD:
             return True, "threshold"

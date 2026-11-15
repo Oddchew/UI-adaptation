@@ -1,110 +1,245 @@
-# OSTIS UI Adaptation (A → B → C)
+# OSTIS UI Adaptation
 
-**Module B** — реальный (`module_b.ModuleB`), не заглушка.  
-Правила: `module_b/rules_default.json` или файл из редактора (`*.adaptation.json`).
+Прототип адаптации пользовательского интерфейса во время работы с ним. Система собирает события взаимодействия, по правилам выбирает изменение и применяет его к модели интерфейса с сохранением версий и результата.
 
-```bash
-# тесты B
-PYTHONPATH=. python3 tests/test_module_b.py
-# A → B → C
-PYTHONPATH=. python3 tests/demo_abc.py
-# HTTP demo
-MODULE_A_USE_SC=0 python3 integration/server.py
-# с правилами из редактора:
-ADAPTATION_RULES=./my_ui.adaptation.json MODULE_A_USE_SC=0 python3 integration/server.py
+Контур разделён на три модуля:
+
+- **A — сбор данных:** принимает события и поддерживает модель пользователя.
+- **B — принятие решения:** анализирует данные A по правилам и формирует команду.
+- **C — применение:** проверяет команду, обновляет представление и фиксирует результат.
+
+Репозиторий содержит Python-модули, SC-схемы, локальный демонстрационный интерфейс учебного Python-ассистента и проверки. Для локального запуска используется Python 3.10+ и стандартная библиотека. `py-sc-client` нужен только для работы со sc-памятью.
+
+## Общая схема
+
+```text
+Пользователь взаимодействует с интерфейсом
+                │ InteractionEvent
+                ▼
+       A · сбор событий и модель пользователя
+                │ PackageAtoB
+                ▼
+       B · правила и выбор адаптации
+                │ CommandBtoC
+                ▼
+       C · проверка, применение и версии
+                │                 │
+        результат B       AdaptationResult → A
+                │
+                ▼
+       Runtime обновляет представление
 ```
 
-Заглушка `MockModuleB` остаётся только в `module_a.mocks` для совместимости.
+В локальной демонстрации A, B и C работают внутри одного Python-процесса и связаны обработчиками. Браузер передаёт события через HTTP и подтверждает применение изменений. Модель и версии C в этом режиме хранятся в SQLite.
 
----
+Версия **модели пользователя** A и версия **интерфейса** C — разные значения. B получает активную версию интерфейса от C и указывает её в команде.
 
-# OSTIS UI Adaptation (A → B → C)
+## Модуль A — события и модель пользователя
 
-**Модуль B** (реальный): пакет `module_b/` — `from module_b import ModuleB`.
+A принимает `InteractionEvent`: идентификаторы события, пользователя и интерфейса, тип и время; при необходимости — сеанс, элемент, код ошибки, действие и изменённое значение. Поддерживаются ошибки, запросы помощи, открытие и закрытие блоков, успешные действия, ручные изменения, фокус, время взаимодействия и скрытие подсказки.
 
-Заглушка B остаётся в `module_a.mocks` для обратной совместимости.
+Для пользователя A ведёт `UserModel`: счётчики событий, ошибок, обращений к помощи и успешных действий, окно наблюдения, оценку заполненности модели, признаки холодного старта, предпочтения и историю результатов адаптации. Информация о скрытой подсказке и ручном режиме привязана к интерфейсу и сеансу.
 
----
+При наступлении триггера A формирует `PackageAtoB`. Триггерами могут быть накопление первых событий, порог ошибок или обращений к помощи, ручное изменение, таймер и принудительный запрос. В пакет входят снимок модели, события окна или сеанса, идентификаторы пользователя и интерфейса, версия модели A и причина отправки.
 
-# Модуль A (Python) — сбор данных и модель пользователя
+A принимает `AdaptationResult` от C и сохраняет его в истории адаптаций. Такой результат не учитывается как ошибка пользователя и сам по себе не означает, что адаптация оказалась полезной.
 
-**Контур:** run-time адаптация A → B → C  
-**Версия:** 0.7  
-**Язык:** Python 3.10+
+Точки входа: `ModuleA.handle_event`, `set_package_handler`, `handle_application_result`, `get_user_model`. Типы находятся в [`module_a/types.py`](module_a/types.py), сборка пакета — в [`module_a/package_builder.py`](module_a/package_builder.py).
 
-Порт TypeScript-реализации `module_A_adaptation` с теми же контрактами и логикой (mutex, validation, cold_start_notified, ring buffer).
+## Модуль B — решение об адаптации
 
-## Быстрый старт
+B получает пакет A и проверяет, разрешены ли автоматические изменения, достаточно ли данных и выполняются ли условия правил. Правила задаются объектами Python или JSON-файлом. При нескольких подходящих правилах выбирается правило с наименьшим числовым приоритетом.
+
+Встроенные правила находятся в [`module_b/rule_schema.py`](module_b/rule_schema.py); файл для демо — [`module_b/rules_default.json`](module_b/rules_default.json). Основные сценарии:
+
+| События и условия | Команда B → C |
+|---|---|
+| Две ошибки одного типа для одного элемента в сеансе, если подсказка не была скрыта | `hints_panel.visible`: `false → true` |
+| Пользователь скрывает подсказку | `hints_panel.visible`: `true → false`; повторный показ в том же сеансе блокируется |
+| Три запроса помощи без успешной проверки решения в сеансе | `history_content.visible`: `true → false` |
+| Пользователь разворачивает историю | `history_content.visible`: `false → true` |
+
+Правила по доле ошибок и увеличению шрифта присутствуют в наборе, но по умолчанию отключены. Правило сворачивания истории демонстрирует изменение интерфейса; его полезность для конкретного учебного сценария требует отдельной оценки.
+
+B формирует `CommandBtoC`: `request_id`, `interface_id`, `user_id`, `session_id`, `base_version_id`, целевой элемент, свойство, старое и новое значения, основание, правило, исходные события и ограничения. После подтверждённого применения B учитывает правило в механизме ограничения повторов.
+
+Точки входа: `ModuleB.handle_package`, `decide`, `set_rules`, `set_version_provider`, `set_command_handler`. Контракт команды определён в [`module_b/models.py`](module_b/models.py).
+
+## Модуль C — применение и результат
+
+C проверяет обязательные поля, базовую версию, существование компонента, разрешённое свойство, тип и текущее значение. Допустимые изменения задаются `AdaptationPolicy`. Для учебного примера разрешены `hints_panel.visible` и `history_content.visible`.
+
+При применении C подготавливает изменённую модель, передаёт её runtime и после подтверждения фиксирует новую активную версию и запись журнала. Содержимое кода и учебное состояние не являются изменяемыми свойствами этого сценария.
+
+Результат содержит один из статусов:
+
+- `applied` — runtime подтвердил изменение, версия зафиксирована;
+- `rejected` — команда не прошла проверку;
+- `failed` — произошёл технический сбой при выполнении.
+
+При ошибке C пытается восстановить предыдущее представление. Если восстановление не подтверждено, выставляется `recovery_required` и контекст блокируется для дальнейших автоматических изменений. Повтор обработанного `request_id` возвращает сохранённый результат; для восстановления сохранённой версии предусмотрен `restore`.
+
+`SQLiteRepository` хранит версии, журнал, результаты и незавершённые операции. После перезапуска незавершённый контекст блокируется до восстановления. Результаты, которые не удалось доставить A, могут быть отправлены повторно через `retry_notifications`; демонстрационный сервер выполняет повтор периодически.
+
+Состояние и версии команд с `session_id` разделяются по интерфейсу, пользователю и сеансу. Команды без `session_id` используют общий контекст интерфейса.
+
+Код модуля и описание адаптеров: [`module_c/`](module_c/), [`module_c/README.md`](module_c/README.md).
+
+## Модель интерфейса и OSTIS
+
+Модель C содержит идентификатор и название интерфейса, компоненты с типами и свойствами и связи между ними. Названия типов и свойств согласованы с абстрактной моделью редактора, в частности `visible` и `font_size`.
+
+В SC-модели редактора используются `concept_ui_interface`, `nrel_ui_has_component`, `nrel_ui_contains`, `nrel_ui_id`, классы свойств `concept_ui_*` и `nrel_ui_value`. `ScUiModelAdapter` содержит код чтения интерфейса и свойства через `py-sc-client` и изменения одного SC-link. `ScModelRuntime` принимает адаптер модели и renderer, который должен подтвердить обновление представления.
+
+Полный контур с реальным renderer и хранением версий C в sc-памяти ещё не подключён. Для записи через SC-адаптер требуется внешняя координация единственного писателя: сравнение старого значения и запись SC-link не являются атомарной операцией для нескольких клиентов. Для отдельных сеансов требуется маршрутизация к подготовленным персональным моделям в SC. Адаптер и изменённое SC-хранилище A не проверялись с работающей sc-machine.
+
+SC-схемы репозитория:
+
+- [`sc/user_model_and_events.scs`](sc/user_model_and_events.scs) — события, модель пользователя и результат адаптации;
+- [`sc/module_c_adaptation.scs`](sc/module_c_adaptation.scs) — понятия для команд, версий и исходов C.
+
+Контракт A/B/C и соответствие SC-модели описаны в [`docs/01_ABC_SC_CONTRACT.md`](docs/01_ABC_SC_CONTRACT.md). Формальная схема UI и каталог компонентов находятся в [ostis-ui-editor](https://github.com/vodo4kin/ostis-ui-editor).
+
+## Быстрый запуск демо
+
+Из корня репозитория:
 
 ```bash
-cd module_A_adaptation_py
-python3 tests/demo.py
-python3 tests/test_p0_p1.py
-python3 tests/test_e2e.py
+python integration/server.py
 ```
 
-Зависимости для in-memory **не нужны**. Для sc-памяти:
+Откройте **http://127.0.0.1:8765/**. В Windows при проблемах с кодировкой консоли используйте `python -X utf8 integration/server.py`.
+
+На экране можно:
+
+1. Дважды нажать «Смоделировать ошибку» — появится подсказка. Скрытая пользователем подсказка не показывается повторно в том же сеансе.
+2. В новом сеансе трижды нажать «Запросить помощь» до имитации успешной проверки — содержимое истории свернётся; его можно развернуть.
+3. Посмотреть модель A, состояние UI и пакеты A → B в разделе «Технические данные».
+
+Проверка Python-кода и ошибки в демо имитируются: введённый код не исполняется и не анализируется. История действий на экране существует в текущей вкладке.
+
+### Настройки сервера
+
+| Переменная | По умолчанию | Назначение |
+|---|---|---|
+| `MODULE_A_PORT` | `8765` | HTTP-порт демо |
+| `MODULE_A_USE_SC` | `0` | `1` — попытаться использовать гибридное хранилище A с sc-памятью |
+| `SC_WS_URL` | `ws://127.0.0.1:8090/ws_json` | WebSocket-адрес sc-server для A |
+| `MODULE_C_DB` | `module_c.sqlite3` в корне | Путь к SQLite-файлу версий и журнала C |
+| `ADAPTATION_RULES` | `module_b/rules_default.json` | Путь к JSON-файлу правил B |
+
+Например, в PowerShell:
+
+```powershell
+$env:MODULE_A_PORT = '8766'
+$env:MODULE_C_DB = 'demo.sqlite3'
+python -X utf8 integration/server.py
+```
+
+Установка опционального клиента:
 
 ```bash
-pip install py-sc-client
+pip install "py-sc-client>=0.4.0"
 ```
 
-## Использование
+`MODULE_A_USE_SC=1` относится к хранилищу A и не включает автоматически SC-адаптер C. При использовании `HybridStorage` локальная память участвует в работе A, а запись в SC выполняется при доступном соединении.
+
+## Использование модулей из Python
+
+Пример связывает A, B и C с хранилищем и runtime в памяти. Две ошибки запускают правило показа подсказки:
 
 ```python
 import asyncio
-from module_a import (
-    ModuleA, InMemoryStorage, ModuleAConfig,
-    InteractionEvent, EventType, MockModuleB, MockModuleC,
-)
+from datetime import datetime, timezone
+
+from module_a import EventType, InMemoryStorage, InteractionEvent, ModuleA, ModuleAConfig
+from module_b import ModuleB
+from module_c import MemoryRepository, MemoryRuntime, ModuleC, component_by_id, default_model
+
 
 async def main():
-    cfg = ModuleAConfig(COLD_START_THRESHOLD=8)
-    module_a = ModuleA(InMemoryStorage(cfg), cfg)
-    module_b = MockModuleB()
-    module_c = MockModuleC()
+    config = ModuleAConfig(COLD_START_THRESHOLD=2, PERIODIC_SNAPSHOT_MS=0)
+    module_a = ModuleA(InMemoryStorage(config), config)
+    module_b = ModuleB()
 
+    repository = MemoryRepository()
+    repository.register("python_tutor_model", default_model())
+    module_c = ModuleC(repository, MemoryRuntime())
+
+    module_a.set_package_handler(module_b.handle_package)
+    module_b.set_version_provider(module_c.active_version)
     module_b.set_command_handler(module_c.apply)
     module_c.set_application_handler(module_a.handle_application_result)
-    module_a.set_package_handler(module_b.handle_package)
 
-    await module_a.handle_event(InteractionEvent(
-        id="1", user_id="u1", interface_id="ui",
-        event_type=EventType.ERROR,
-        timestamp="2026-11-15T12:00:00Z",
-        error_code="required_field",
-    ))
+    for event_id in ("error-1", "error-2"):
+        await module_a.handle_event(InteractionEvent(
+            id=event_id,
+            user_id="student-1",
+            interface_id="python_tutor_model",
+            session_id="session-1",
+            event_type=EventType.ERROR,
+            timestamp=datetime.now(timezone.utc).isoformat(),
+            element_id="code_editor",
+            error_code="syntax_error",
+        ))
+
+    version, model = await module_c.state("python_tutor_model", "student-1", "session-1")
+    print(version, component_by_id(model, "hints_panel")["props"]["visible"])
     module_a.dispose()
+
 
 asyncio.run(main())
 ```
 
-## Структура
+`MemoryRuntime` подтверждает обновление модели в памяти. Для браузерного или другого реального представления необходимо подключить runtime с собственным подтверждением применения.
 
-```
-module_A_adaptation_py/
-├── module_a/
-│   ├── module_a.py          # фасад
-│   ├── user_model_manager.py
-│   ├── package_builder.py
-│   ├── validation.py
-│   ├── types.py
-│   ├── storage/             # memory, sc stub, hybrid
-│   ├── frontend/            # EventCollector (серверный API)
-│   └── mocks/               # B, C
-├── sc/user_model_and_events.scs
-├── tests/
+## HTTP API демонстрации
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| `GET` | `/api/health` | Готовность сервера и состояние подключения A к SC |
+| `POST` | `/api/event` | Передача события взаимодействия в A |
+| `GET` | `/api/model/{user_id}` | Снимок модели пользователя A |
+| `GET` | `/api/ui-state?user_id=…&session_id=…` | Состояние и версия UI для контекста |
+| `GET` | `/api/runtime/pending?user_id=…&session_id=…` | Ожидающие обновления runtime |
+| `POST` | `/api/runtime/ack` | Подтверждение обновления runtime |
+| `POST` | `/api/reset-b` | Сброс ограничения повторов правил B |
+
+## Структура репозитория
+
+```text
+UI-adaptation/
+├── module_a/                 # события, модель пользователя, хранилища
+│   ├── frontend/             # API сборщика событий
+│   ├── mocks/                # заглушки для отдельных сценариев
+│   └── storage/              # memory, SC, hybrid
+├── module_b/                 # решения, правила и команда B → C
+├── module_c/                 # применение, версии, runtime и SC-адаптер
+├── sc/                       # SC-схемы A и C
+├── integration/              # HTTP-сервер и браузерное демо
+├── tests/                    # локальные и интеграционные проверки
+├── docs/                     # документация и контракт A/B/C
+├── pyproject.toml
 └── README.md
 ```
 
-## Связь с TypeScript-версией
+## Проверки
 
-| TS | Python |
-|----|--------|
-| `src/ModuleA.ts` | `module_a/module_a.py` |
-| `UserModelManager` | `user_model_manager.py` |
-| `InMemoryStorage` | `storage/memory.py` |
-| `ts-sc-client` | `py-sc-client` (опционально) |
-| `EventCollector` (DOM) | серверный emit API |
+Локальные проверки не требуют sc-server:
 
-Контракты A→B / C→A — те же, что в `docs/05_contracts_abc.md` исходного модуля.
+```bash
+python -m unittest discover -s tests -p test_module_c.py -v
+python -m unittest discover -s tests -p test_runtime_http.py -v
+python tests/test_module_b.py
+python tests/test_p0_p1.py
+python tests/test_e2e.py
+```
+
+В Windows при ошибке кодировки вывода добавьте `-X utf8` после `python`. `test_e2e.py` проверяет исходную цепочку с заглушками B и C; сквозной сценарий с реальными B и C проверяется в `test_module_c.py` и `test_runtime_http.py`. `tests/demo_sc.py` предназначен для отдельной проверки при доступной sc-machine.
+
+## Дополнительные материалы
+
+- [Контракт адаптации и SC-модель](docs/01_ABC_SC_CONTRACT.md).
+- [Описание модуля C](module_c/README.md).
+- [Описание правил B](module_b/README.md).
+- [Документация модуля A](docs/00_FULL_DOCUMENTATION.md) — описывает исходную версию A; для текущих контрактов A/B/C используйте также общий контракт выше.

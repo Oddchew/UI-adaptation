@@ -17,16 +17,16 @@ from module_a import (
     ModuleAConfig,
     InteractionEvent,
     EventType,
-    MockModuleC,
 )
 from module_b import ModuleB
+from module_c import ModuleC, MemoryRepository, MemoryRuntime, default_model
 
 
 def evt(event_type: EventType, **kw) -> InteractionEvent:
     return InteractionEvent(
         id=f"e_{uuid.uuid4().hex[:6]}",
         user_id=kw.pop("user_id", "user_001"),
-        interface_id=kw.pop("interface_id", "python_tutor_task_1"),
+        interface_id=kw.pop("interface_id", "python_tutor_model"),
         timestamp=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         event_type=event_type,
         **kw,
@@ -44,7 +44,10 @@ async def main() -> None:
     )
     a = ModuleA(InMemoryStorage(cfg), cfg)
     b = ModuleB()
-    c = MockModuleC()
+    repo = MemoryRepository()
+    repo.register('python_tutor_model', default_model())
+    c = ModuleC(repo, MemoryRuntime())
+    b.set_version_provider(c.active_version)
 
     b.set_command_handler(c.apply)
     c.set_application_handler(a.handle_application_result)
@@ -59,15 +62,15 @@ async def main() -> None:
     print("\n--- ошибки → R1 (hints_panel) ---")
     for _ in range(4):
         await a.handle_event(evt(EventType.ERROR, element_id="hints_panel", error_code="validation"))
-    print("UI state:", c.get_ui_state())
+    print("UI state:", (await repo.current('python_tutor_model'))[1])
     m = await a.get_user_model("user_001")
     print(f"adaptation_history={len(m.adaptation_history)}")
 
-    print("\n--- help → R2 (font) ---")
+    print("\n--- help → history ---")
     b.reset_anti_flicker("user_001")
     for _ in range(4):
         await a.handle_event(evt(EventType.HELP_REQUEST))
-    print("UI state:", c.get_ui_state())
+    print("UI state:", (await repo.current('python_tutor_model'))[1])
 
     a.dispose()
     print("\nГотово.")

@@ -60,6 +60,7 @@ def make_pkg(
                 event_type=EventType.ERROR,
                 timestamp=ts,
                 element_id="hints_panel",
+                error_code="validation",
             )
         )
     for i in range(helps):
@@ -127,12 +128,13 @@ async def run() -> None:
     global passed, failed
     print("Module B suite\n")
     b = ModuleB()
+    b.set_version_provider(lambda _: 'ui_v1')
 
     r = await b.decide(make_pkg(errors=5, n_pad=3, manual=True))
     assert_(r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.MANUAL_OVERRIDE, "manual")
 
     r = await b.decide(make_pkg(errors=5, n_pad=3, cold=True))
-    assert_(r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.COLD_START, "cold")
+    assert_(r.status == DecisionStatus.COMMAND, "two errors are sufficient")
 
     r = await b.decide(make_pkg(errors=1))
     assert_(
@@ -147,17 +149,22 @@ async def run() -> None:
     assert_(r.command is not None and r.command.target_element_id == "hints_panel", "R1 target")
     assert_(r.command is not None and r.command.property == "visible" and r.command.new_value is True, "R1 val")
 
+    async def applied(cmd):
+        from types import SimpleNamespace
+        return SimpleNamespace(status='applied')
+    b.set_command_handler(applied)
+    await b.handle_package(make_pkg(errors=3, n_pad=1))
     r2 = await b.decide(make_pkg(errors=3, n_pad=1))
     assert_(
-        r2.status == DecisionStatus.REJECTED and r2.reject_reason == RejectReason.ALREADY_APPLIED,
+        r2.status == DecisionStatus.REJECTED and r2.reject_reason == RejectReason.NO_RULE_MATCHED,
         "anti-flicker",
     )
 
     b.reset_anti_flicker()
     r = await b.decide(make_pkg(helps=4))
-    assert_(r.status == DecisionStatus.COMMAND and r.command is not None, "R2 command")
-    assert_(r.command is not None and r.command.rule_id == "R_enlarge_font_on_help", "R2 rule")
-    assert_(r.command is not None and r.command.property == "fontSize", "R2 prop")
+    assert_(r.status == DecisionStatus.COMMAND and r.command is not None, "history command")
+    assert_(r.command is not None and r.command.rule_id == "R_collapse_history_on_help_without_check", "history rule")
+    assert_(r.command is not None and r.command.target_element_id == "history_content" and r.command.property == "visible" and r.command.new_value is False, "history property")
 
     b.reset_anti_flicker()
     r = await b.decide(make_pkg(successes=3))
@@ -193,6 +200,7 @@ async def run() -> None:
         }
     ]
     b3 = ModuleB(rules=custom)
+    b3.set_version_provider(lambda _: 'ui_v1')
     r = await b3.decide(make_pkg(errors=5, n_pad=1))
     assert_(r.status == DecisionStatus.COMMAND and r.command is not None, "custom command")
     assert_(r.command is not None and r.command.rule_id == "R_theme_on_many_errors", "custom id")
@@ -200,6 +208,7 @@ async def run() -> None:
 
     path = Path(__file__).resolve().parents[1] / "module_b" / "rules_default.json"
     b4 = ModuleB(rules=path)
+    b4.set_version_provider(lambda _: 'ui_v1')
     r = await b4.decide(make_pkg(errors=3, n_pad=1))
     assert_(r.status == DecisionStatus.COMMAND, "json file rules")
 

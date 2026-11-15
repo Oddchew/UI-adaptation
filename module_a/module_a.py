@@ -61,14 +61,14 @@ class ModuleA:
             trigger = PackageTrigger.MANUAL_OVERRIDE
             manual = True
         else:
-            send, trig = await self._mgr.should_send_package(event.user_id)
+            send, trig = await self._mgr.should_send_package(event.user_id, event=event)
             should_send = send
             if trig:
                 trigger = PackageTrigger(trig)
 
         if should_send:
             await self._emit_package(
-                event.user_id, event.interface_id, trigger, manual
+                event.user_id, event.interface_id, trigger, manual, event.session_id
             )
 
         self._ensure_periodic(event.user_id, event.interface_id)
@@ -95,8 +95,9 @@ class ModuleA:
         interface_id: str,
         trigger: PackageTrigger,
         manual_override: bool,
+        session_id: Optional[str] = None,
     ) -> PackageAtoB:
-        pkg = await self._builder.build(user_id, interface_id, trigger, manual_override)
+        pkg = await self._builder.build(user_id, interface_id, trigger, manual_override, session_id)
         if trigger == PackageTrigger.COLD_START:
             await self._mgr.mark_cold_start_notified(user_id)
         if self._on_package:
@@ -109,7 +110,7 @@ class ModuleA:
         return pkg
 
     def _ensure_periodic(self, user_id: str, interface_id: str) -> None:
-        if self._disposed:
+        if self._disposed or self.config.PERIODIC_SNAPSHOT_MS <= 0:
             return
         self._interface_by_user[user_id] = interface_id
         if user_id in self._periodic_tasks:

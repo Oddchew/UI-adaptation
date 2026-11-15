@@ -1,0 +1,36 @@
+// Vocabulary for interface versions and adaptation outcomes.
+// UI component vocabulary comes from abstract_ui_model.scs.
+concept_adaptation_request <- sc_node_class;;
+concept_ui_version <- sc_node_class;;
+concept_ui_version_pending <- sc_node_class;;
+concept_ui_version_active <- sc_node_class;;
+concept_ui_version_failed <- sc_node_class;;
+concept_adaptation_outcome <- sc_node_class;;
+concept_restore_outcome <- sc_node_class;;
+concept_adaptation_applied <- sc_node_class;;
+concept_adaptation_rejected <- sc_node_class;;
+concept_adaptation_failed <- sc_node_class;;
+concept_ui_recovery_required <- sc_node_class;;
+
+nrel_adaptation_request_id <- sc_node_non_role_relation;;
+nrel_adaptation_interface <- sc_node_non_role_relation;;
+nrel_adaptation_user <- sc_node_non_role_relation;;
+nrel_adaptation_session <- sc_node_non_role_relation;;
+nrel_adaptation_base_version <- sc_node_non_role_relation;;
+nrel_adaptation_active_version <- sc_node_non_role_relation;;
+nrel_adaptation_version_before <- sc_node_non_role_relation;;
+nrel_adaptation_version_after <- sc_node_non_role_relation;;
+nrel_adaptation_version_id <- sc_node_non_role_relation;;
+nrel_adaptation_target <- sc_node_non_role_relation;;
+nrel_adaptation_property <- sc_node_non_role_relation;;
+nrel_adaptation_old_value <- sc_node_non_role_relation;;
+nrel_adaptation_new_value <- sc_node_non_role_relation;;
+nrel_adaptation_rule <- sc_node_non_role_relation;;
+nrel_adaptation_source_event <- sc_node_non_role_relation;;
+nrel_adaptation_status <- sc_node_non_role_relation;;
+nrel_adaptation_reason <- sc_node_non_role_relation;;
+nrel_adaptation_failure_reason <- sc_node_non_role_relation;;
+nrel_adaptation_duration_ms <- sc_node_non_role_relation;;
+nrel_adaptation_occurred_at <- sc_node_non_role_relation;;
+nrel_adaptation_recovery_required <- sc_node_non_role_relation;;
+nrel_adaptation_version_snapshot <- sc_node_non_role_relation;;

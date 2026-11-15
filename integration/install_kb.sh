@@ -24,6 +24,8 @@ DEST="$EXAMPLE_APP/knowledge-base/module_a"
 mkdir -p "$DEST"
 cp -f "$SCS_SRC" "$DEST/user_model_and_events.scs"
 echo "✓ скопировано → $DEST/user_model_and_events.scs"
+cp -f "$MODULE_ROOT/sc/module_c_adaptation.scs" "$DEST/module_c_adaptation.scs"
+echo "✓ скопировано → $DEST/module_c_adaptation.scs"
 
 # repo.path: добавить, если нет
 REPO="$EXAMPLE_APP/repo.path"

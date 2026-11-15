@@ -28,7 +28,7 @@
       "id": "R_hint_on_error_rate",
       "description": "Показать подсказки при высоком error_rate",
       "priority": 1,
-      "enabled": true,
+      "enabled": false,
       "respect_hint_hidden": true,
       "trigger": {
         "kind": "error_rate",
@@ -47,7 +47,7 @@
       "id": "R_enlarge_font_on_help",
       "description": "Увеличить шрифт после нескольких запросов помощи",
       "priority": 2,
-      "enabled": true,
+      "enabled": false,
       "trigger": {
         "kind": "help_count",
         "threshold": 3,
@@ -55,7 +55,7 @@
       },
       "action": {
         "target_element_id": "main_content",
-        "property": "fontSize",
+        "property": "font_size",
         "old_value": 14,
         "new_value": 16
       },
@@ -73,10 +73,10 @@
         "require_no_success": true
       },
       "action": {
-        "target_element_id": "history_panel",
-        "property": "collapsed",
-        "old_value": false,
-        "new_value": true
+        "target_element_id": "history_content",
+        "property": "visible",
+        "old_value": true,
+        "new_value": false
       },
       "constraints": []
     }

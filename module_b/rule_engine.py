@@ -56,6 +56,8 @@ def _count_event_type(pkg: PackageAtoB, et: Any, element_id: Optional[str] = Non
     n = sum(1 for _ in _events(pkg, _et_value(et), element_id))
     if n > 0:
         return n
+    if pkg.interaction_events:
+        return 0
     if element_id is not None:
         return 0
     c = pkg.model_snapshot.counters
@@ -69,19 +71,14 @@ def _count_event_type(pkg: PackageAtoB, et: Any, element_id: Optional[str] = Non
 
 
 def _has_success(pkg: PackageAtoB) -> bool:
-    if any(_is_type(e.event_type, EventType.SUCCESSFUL_ACTION) for e in pkg.interaction_events):
-        return True
+    if pkg.interaction_events:
+        return any(_is_type(e.event_type, EventType.SUCCESSFUL_ACTION) and e.action_id == 'check_run' for e in pkg.interaction_events)
     return int(getattr(pkg.model_snapshot.counters, "successful_actions", 0) or 0) > 0
 
 
 def _hint_hidden(snap: UserModel) -> bool:
     if getattr(snap.preferences, "show_tooltips", None) is False:
         return True
-    for r in reversed(getattr(snap, "adaptation_history", None) or []):
-        if getattr(r, "target_element_id", None) in ("hints_panel", "help_panel"):
-            if getattr(r, "property", None) == "visible" and r.new_value is False:
-                return True
-            break
     return False
 
 
@@ -91,6 +88,13 @@ def _metric(pkg: PackageAtoB, rule: AdaptationRule) -> tuple[float, list[str]]:
 
     if tr.kind == TriggerKind.ERROR_COUNT:
         evs = list(_events(pkg, EventType.ERROR.value, eid))
+        if rule.id == 'R_hint_after_2_errors':
+            groups = {}
+            for e in evs:
+                if e.error_code:
+                    groups.setdefault((e.session_id, e.interface_id, e.element_id, e.error_code), []).append(e)
+            evs = max(groups.values(), key=len, default=[])
+            return float(len(evs)), [e.id for e in evs]
         ids = [e.id for e in evs]
         val = float(len(evs) if evs else _count_event_type(pkg, EventType.ERROR, eid))
         if not ids and val > 0:
