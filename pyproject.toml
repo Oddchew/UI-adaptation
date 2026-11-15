@@ -1,0 +1,12 @@
+[project]
+name = "module-a-adaptation"
+version = "0.7.0"
+description = "Module A — user model and interaction collection for OSTIS adaptive UI (A→B→C)"
+requires-python = ">=3.10"
+readme = "README.md"
+
+[project.optional-dependencies]
+sc = ["py-sc-client>=0.4.0"]
+
+[tool.setuptools.packages.find]
+include = ["module_a*"]

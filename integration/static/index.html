@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Module A — адаптивный UI (демо)</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>Демо run-time адаптации (модуль A)</h1>
+      <p class="sub">ostis-example-app · sc-server · A → B → C</p>
+    </div>
+    <div id="health" class="badge">…</div>
+  </header>
+
+  <main class="layout">
+    <section class="panel form-panel">
+      <h2>Интерфейс пользователя</h2>
+      <p class="hint">Действия уходят в Module A как InteractionEvent. При пороге ошибок B включает подсказку, C меняет UI.</p>
+
+      <form id="demo-form" data-ui-id="form_profile">
+        <label>
+          Email
+          <input id="email" data-ui-id="email_input" type="email" placeholder="user@example.com" />
+        </label>
+        <label>
+          Пароль
+          <input id="password" data-ui-id="password_input" type="password" placeholder="••••••••" />
+        </label>
+        <div class="row">
+          <button type="submit" data-ui-id="btn_save" data-action="save_profile">Сохранить</button>
+          <button type="button" id="btn-error" data-ui-id="btn_force_error">Смоделировать ошибку</button>
+          <button type="button" id="btn-help" data-ui-id="btn_help">Нужна помощь</button>
+        </div>
+      </form>
+
+      <div id="help_panel" class="help-panel" hidden>
+        <strong>Подсказка (адаптация C)</strong>
+        <p>Похоже, возникают ошибки. Проверьте email и пароль. Поля подсвечены.</p>
+      </div>
+
+      <div class="prefs">
+        <h3>Ручная настройка (manual_override)</h3>
+        <label class="inline">
+          Тема
+          <select id="theme" data-ui-id="theme_select">
+            <option value="light">light</option>
+            <option value="dark">dark</option>
+          </select>
+        </label>
+      </div>
+    </section>
+
+    <aside class="panel side">
+      <h2>Модель пользователя (A)</h2>
+      <pre id="model-view">—</pre>
+
+      <h2>Состояние UI (C)</h2>
+      <pre id="ui-view">—</pre>
+
+      <h2>Пакеты A→B</h2>
+      <pre id="pkg-view">—</pre>
+
+      <button type="button" id="btn-refresh" class="ghost">Обновить</button>
+      <button type="button" id="btn-reset-b" class="ghost">Сброс anti-flicker B</button>
+    </aside>
+  </main>
+
+  <footer>
+    <span>user_id: <code>user_demo</code></span>
+    <span>· API <code>/api/event</code></span>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,376 @@
+// =============================================================================
+// Модуль A — SC-формализация
+// Событие взаимодействия, модель пользователя, пакет A→B, результат от C
+// Версия 0.2 | 14.11.2026
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// 1. СОБЫТИЕ ВЗАИМОДЕЙСТВИЯ
+// -----------------------------------------------------------------------------
+
+concept_interaction_event
+=> nrel_main_idtf:
+	[событие взаимодействия] (* <- lang_ru;; *);
+	[interaction event] (* <- lang_en;; *);
+<- sc_node_class;;
+
+// --- Подклассы событий ---
+concept_error_event
+=> nrel_main_idtf: [событие ошибки] (* <- lang_ru;; *);
+<- concept_interaction_event;;
+
+concept_help_request_event
+=> nrel_main_idtf: [событие запроса помощи] (* <- lang_ru;; *);
+<- concept_interaction_event;;
+
+concept_block_open_event
+=> nrel_main_idtf: [событие открытия блока] (* <- lang_ru;; *);
+<- concept_interaction_event;;
+
+concept_block_close_event
+=> nrel_main_idtf: [событие закрытия блока] (* <- lang_ru;; *);
+<- concept_interaction_event;;
+
+concept_successful_action_event
+=> nrel_main_idtf: [событие успешного действия] (* <- lang_ru;; *);
+<- concept_interaction_event;;
+
+concept_focus_event
+=> nrel_main_idtf: [событие получения фокуса] (* <- lang_ru;; *);
+<- concept_interaction_event;;
+
+concept_blur_event
+=> nrel_main_idtf: [событие потери фокуса] (* <- lang_ru;; *);
+<- concept_interaction_event;;
+
+concept_manual_override_event
+=> nrel_main_idtf: [событие ручного изменения] (* <- lang_ru;; *);
+<- concept_interaction_event;;
+
+concept_time_spent_event
+=> nrel_main_idtf: [событие времени пребывания] (* <- lang_ru;; *);
+<- concept_interaction_event;;
+
+// --- Отношения события ---
+nrel_event_user
+=> nrel_main_idtf:
+	[пользователь события] (* <- lang_ru;; *);
+	[event user] (* <- lang_en;; *);;
+
+nrel_event_interface
+=> nrel_main_idtf:
+	[интерфейс события] (* <- lang_ru;; *);
+	[event interface] (* <- lang_en;; *);;
+
+nrel_event_element
+=> nrel_main_idtf:
+	[элемент интерфейса события] (* <- lang_ru;; *);
+	[event UI element] (* <- lang_en;; *);;
+
+nrel_event_timestamp
+=> nrel_main_idtf:
+	[временная метка события] (* <- lang_ru;; *);
+	[event timestamp] (* <- lang_en;; *);;
+
+nrel_event_session
+=> nrel_main_idtf:
+	[сессия события] (* <- lang_ru;; *);;
+
+nrel_error_code
+=> nrel_main_idtf:
+	[код ошибки] (* <- lang_ru;; *);;
+
+nrel_error_severity
+=> nrel_main_idtf:
+	[серьёзность ошибки] (* <- lang_ru;; *);;
+
+nrel_help_type
+=> nrel_main_idtf:
+	[тип запроса помощи] (* <- lang_ru;; *);;
+
+nrel_duration_ms
+=> nrel_main_idtf:
+	[длительность в миллисекундах] (* <- lang_ru;; *);;
+
+nrel_action_id
+=> nrel_main_idtf:
+	[идентификатор действия] (* <- lang_ru;; *);;
+
+nrel_changed_property
+=> nrel_main_idtf:
+	[изменённое свойство] (* <- lang_ru;; *);;
+
+nrel_old_value
+=> nrel_main_idtf:
+	[старое значение] (* <- lang_ru;; *);;
+
+nrel_new_value
+=> nrel_main_idtf:
+	[новое значение] (* <- lang_ru;; *);;
+
+// -----------------------------------------------------------------------------
+// 2. МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ
+// -----------------------------------------------------------------------------
+
+concept_user_model
+=> nrel_main_idtf:
+	[модель пользователя] (* <- lang_ru;; *);
+	[user model] (* <- lang_en;; *);
+<- sc_node_class;;
+
+// --- Основные атрибуты модели ---
+nrel_model_user
+=> nrel_main_idtf:
+	[пользователь модели] (* <- lang_ru;; *);;
+
+nrel_model_version
+=> nrel_main_idtf:
+	[версия модели пользователя] (* <- lang_ru;; *);
+	[user model version] (* <- lang_en;; *);;
+
+nrel_model_created_at
+=> nrel_main_idtf:
+	[дата создания модели] (* <- lang_ru;; *);;
+
+nrel_model_updated_at
+=> nrel_main_idtf:
+	[дата обновления модели] (* <- lang_ru;; *);;
+
+nrel_is_cold_start
+=> nrel_main_idtf:
+	[признак холодного старта] (* <- lang_ru;; *);
+	[cold start flag] (* <- lang_en;; *);;
+
+nrel_model_completeness
+=> nrel_main_idtf:
+	[степень заполненности модели] (* <- lang_ru;; *);
+	[model completeness] (* <- lang_en;; *);;
+
+// --- Характеристики ---
+concept_user_characteristics
+=> nrel_main_idtf:
+	[характеристики пользователя] (* <- lang_ru;; *);
+<- sc_node_class;;
+
+nrel_experience_level
+=> nrel_main_idtf:
+	[уровень опыта пользователя] (* <- lang_ru;; *);
+	[experience level] (* <- lang_en;; *);;
+
+concept_experience_novice
+=> nrel_main_idtf: [новичок] (* <- lang_ru;; *); [novice] (* <- lang_en;; *);;
+
+concept_experience_intermediate
+=> nrel_main_idtf: [средний уровень] (* <- lang_ru;; *); [intermediate] (* <- lang_en;; *);;
+
+concept_experience_expert
+=> nrel_main_idtf: [эксперт] (* <- lang_ru;; *); [expert] (* <- lang_en;; *);;
+
+nrel_preferred_density
+=> nrel_main_idtf:
+	[предпочтительная плотность интерфейса] (* <- lang_ru;; *);;
+
+concept_density_compact
+=> nrel_main_idtf: [компактная] (* <- lang_ru;; *);;
+
+concept_density_comfortable
+=> nrel_main_idtf: [комфортная] (* <- lang_ru;; *);;
+
+concept_density_spacious
+=> nrel_main_idtf: [просторная] (* <- lang_ru;; *);;
+
+nrel_accessibility_needs
+=> nrel_main_idtf:
+	[потребности доступности] (* <- lang_ru;; *);;
+
+// --- Счётчики ---
+concept_user_counters
+=> nrel_main_idtf:
+	[счётчики взаимодействия пользователя] (* <- lang_ru;; *);
+<- sc_node_class;;
+
+nrel_total_events
+=> nrel_main_idtf: [общее количество событий] (* <- lang_ru;; *);;
+
+nrel_total_errors
+=> nrel_main_idtf: [общее количество ошибок] (* <- lang_ru;; *);;
+
+nrel_errors_by_type
+=> nrel_main_idtf: [ошибки по типам] (* <- lang_ru;; *);;
+
+nrel_help_requests_count
+=> nrel_main_idtf: [количество запросов помощи] (* <- lang_ru;; *);;
+
+nrel_successful_actions_count
+=> nrel_main_idtf: [количество успешных действий] (* <- lang_ru;; *);;
+
+nrel_block_opens_count
+=> nrel_main_idtf: [количество открытий блоков] (* <- lang_ru;; *);;
+
+nrel_manual_overrides_count
+=> nrel_main_idtf: [количество ручных изменений] (* <- lang_ru;; *);;
+
+// --- Окно наблюдения ---
+concept_observation_window
+=> nrel_main_idtf:
+	[окно наблюдения] (* <- lang_ru;; *);
+	[observation window] (* <- lang_en;; *);
+<- sc_node_class;;
+
+nrel_window_start
+=> nrel_main_idtf: [начало окна наблюдения] (* <- lang_ru;; *);;
+
+nrel_window_end
+=> nrel_main_idtf: [конец окна наблюдения] (* <- lang_ru;; *);;
+
+nrel_window_event_count
+=> nrel_main_idtf: [количество событий в окне] (* <- lang_ru;; *);;
+
+nrel_recent_error_rate
+=> nrel_main_idtf: [доля ошибок в окне наблюдения] (* <- lang_ru;; *);;
+
+nrel_recent_help_rate
+=> nrel_main_idtf: [доля запросов помощи в окне] (* <- lang_ru;; *);;
+
+// --- Предпочтения ---
+concept_user_preferences
+=> nrel_main_idtf:
+	[предпочтения пользователя] (* <- lang_ru;; *);
+<- sc_node_class;;
+
+nrel_pref_show_tooltips
+=> nrel_main_idtf: [показывать подсказки] (* <- lang_ru;; *);;
+
+nrel_pref_animation_level
+=> nrel_main_idtf: [уровень анимации] (* <- lang_ru;; *);;
+
+nrel_pref_theme
+=> nrel_main_idtf: [тема оформления] (* <- lang_ru;; *);;
+
+// --- История адаптаций ---
+nrel_adaptation_history
+=> nrel_main_idtf:
+	[история применений адаптации] (* <- lang_ru;; *);
+	[adaptation history] (* <- lang_en;; *);;
+
+// -----------------------------------------------------------------------------
+// 3. ПАКЕТ A → B
+// -----------------------------------------------------------------------------
+
+concept_package_a_to_b
+=> nrel_main_idtf:
+	[пакет модуля A для модуля B] (* <- lang_ru;; *);
+	[package from A to B] (* <- lang_en;; *);
+<- sc_node_class;;
+
+nrel_package_user
+=> nrel_main_idtf: [пользователь пакета] (* <- lang_ru;; *);;
+
+nrel_package_interface
+=> nrel_main_idtf: [интерфейс пакета] (* <- lang_ru;; *);;
+
+nrel_package_model_snapshot
+=> nrel_main_idtf: [снимок модели пользователя] (* <- lang_ru;; *);;
+
+nrel_package_observation_window
+=> nrel_main_idtf: [окно наблюдения пакета] (* <- lang_ru;; *);;
+
+nrel_package_events
+=> nrel_main_idtf: [события пакета] (* <- lang_ru;; *);;
+
+nrel_package_manual_override
+=> nrel_main_idtf: [признак ручного изменения в пакете] (* <- lang_ru;; *);;
+
+nrel_package_trigger
+=> nrel_main_idtf:
+	[триггер формирования пакета] (* <- lang_ru;; *);
+	[package trigger] (* <- lang_en;; *);;
+
+nrel_package_timestamp
+=> nrel_main_idtf: [время формирования пакета] (* <- lang_ru;; *);;
+
+// Значения триггера
+concept_trigger_threshold
+=> nrel_main_idtf: [threshold] (* <- lang_en;; *); [порог] (* <- lang_ru;; *);;
+
+concept_trigger_periodic
+=> nrel_main_idtf: [periodic] (* <- lang_en;; *); [периодический] (* <- lang_ru;; *);;
+
+concept_trigger_manual_override
+=> nrel_main_idtf: [manual_override] (* <- lang_en;; *); [ручное изменение] (* <- lang_ru;; *);;
+
+concept_trigger_cold_start
+=> nrel_main_idtf: [cold_start] (* <- lang_en;; *); [холодный старт] (* <- lang_ru;; *);;
+
+concept_trigger_force
+=> nrel_main_idtf: [force] (* <- lang_en;; *); [принудительный] (* <- lang_ru;; *);;
+
+concept_trigger_application_result
+=> nrel_main_idtf: [application_result] (* <- lang_en;; *); [результат применения] (* <- lang_ru;; *);;
+
+// -----------------------------------------------------------------------------
+// 4. РЕЗУЛЬТАТ ПРИМЕНЕНИЯ (C → A)
+// -----------------------------------------------------------------------------
+
+concept_adaptation_application_result
+=> nrel_main_idtf:
+	[результат применения адаптации] (* <- lang_ru;; *);
+	[adaptation application result] (* <- lang_en;; *);
+<- sc_node_class;;
+
+nrel_result_request_id
+=> nrel_main_idtf: [идентификатор запроса] (* <- lang_ru;; *);;
+
+nrel_result_success
+=> nrel_main_idtf: [успешность применения] (* <- lang_ru;; *);;
+
+nrel_result_applied_at
+=> nrel_main_idtf: [время применения] (* <- lang_ru;; *);;
+
+nrel_result_target_element
+=> nrel_main_idtf: [целевой элемент] (* <- lang_ru;; *);;
+
+nrel_result_property
+=> nrel_main_idtf: [изменённое свойство] (* <- lang_ru;; *);;
+
+nrel_result_reason
+=> nrel_main_idtf: [причина изменения] (* <- lang_ru;; *);;
+
+nrel_result_error_message
+=> nrel_main_idtf: [сообщение об ошибке применения] (* <- lang_ru;; *);;
+
+// -----------------------------------------------------------------------------
+// 5. ПРИМЕР ЭКЗЕМПЛЯРА (иллюстрация)
+// -----------------------------------------------------------------------------
+
+// Пример события ошибки
+event_example_error
+<- concept_error_event;;
+
+event_example_error
+=> nrel_event_user: user_001;;
+event_example_error
+=> nrel_event_interface: ui_main;;
+event_example_error
+=> nrel_event_element: form_submit;;
+event_example_error
+=> nrel_event_timestamp: [2026-11-14T15:10:00Z];;
+event_example_error
+=> nrel_error_code: [required_field];;
+event_example_error
+=> nrel_error_severity: [medium];;
+
+// Пример модели пользователя (фрагмент)
+user_model_001
+<- concept_user_model;;
+
+user_model_001
+=> nrel_model_user: user_001;;
+user_model_001
+=> nrel_model_version: [17];;
+user_model_001
+=> nrel_is_cold_start: [false];;
+user_model_001
+=> nrel_model_completeness: [1.0];;
+user_model_001
+=> nrel_experience_level: concept_experience_novice;;
