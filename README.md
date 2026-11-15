@@ -1,3 +1,31 @@
+# OSTIS UI Adaptation (A → B → C)
+
+**Module B** — реальный (`module_b.ModuleB`), не заглушка.  
+Правила: `module_b/rules_default.json` или файл из редактора (`*.adaptation.json`).
+
+```bash
+# тесты B
+PYTHONPATH=. python3 tests/test_module_b.py
+# A → B → C
+PYTHONPATH=. python3 tests/demo_abc.py
+# HTTP demo
+MODULE_A_USE_SC=0 python3 integration/server.py
+# с правилами из редактора:
+ADAPTATION_RULES=./my_ui.adaptation.json MODULE_A_USE_SC=0 python3 integration/server.py
+```
+
+Заглушка `MockModuleB` остаётся только в `module_a.mocks` для совместимости.
+
+---
+
+# OSTIS UI Adaptation (A → B → C)
+
+**Модуль B** (реальный): пакет `module_b/` — `from module_b import ModuleB`.
+
+Заглушка B остаётся в `module_a.mocks` для обратной совместимости.
+
+---
+
 # Модуль A (Python) — сбор данных и модель пользователя
 
 **Контур:** run-time адаптация A → B → C  

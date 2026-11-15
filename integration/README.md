@@ -1,3 +1,7 @@
+Контур: **ModuleA → ModuleB (реальный) → MockModuleC**.
+
+Правила: env `ADAPTATION_RULES` или `module_b/rules_default.json`.
+
 # Интеграция: KB + UI + Module A
 
 ## Схема

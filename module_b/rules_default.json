@@ -1,0 +1,84 @@
+{
+  "interface_id": "python_tutor_task_1",
+  "version": 1,
+  "rules": [
+    {
+      "id": "R_hint_after_2_errors",
+      "description": "Показать панель подсказок после повторных ошибок",
+      "priority": 1,
+      "enabled": true,
+      "respect_hint_hidden": true,
+      "trigger": {
+        "kind": "error_count",
+        "threshold": 2,
+        "op": "gte"
+      },
+      "action": {
+        "target_element_id": "hints_panel",
+        "property": "visible",
+        "old_value": false,
+        "new_value": true
+      },
+      "constraints": [
+        "не изменять code_editor.content",
+        "не изменять этап задания"
+      ]
+    },
+    {
+      "id": "R_hint_on_error_rate",
+      "description": "Показать подсказки при высоком error_rate",
+      "priority": 1,
+      "enabled": true,
+      "respect_hint_hidden": true,
+      "trigger": {
+        "kind": "error_rate",
+        "threshold": 0.25,
+        "op": "gte"
+      },
+      "action": {
+        "target_element_id": "hints_panel",
+        "property": "visible",
+        "old_value": false,
+        "new_value": true
+      },
+      "constraints": []
+    },
+    {
+      "id": "R_enlarge_font_on_help",
+      "description": "Увеличить шрифт после нескольких запросов помощи",
+      "priority": 2,
+      "enabled": true,
+      "trigger": {
+        "kind": "help_count",
+        "threshold": 3,
+        "op": "gte"
+      },
+      "action": {
+        "target_element_id": "main_content",
+        "property": "fontSize",
+        "old_value": 14,
+        "new_value": 16
+      },
+      "constraints": []
+    },
+    {
+      "id": "R_collapse_history_on_help_without_check",
+      "description": "Свернуть history, если много help и нет успешной проверки",
+      "priority": 3,
+      "enabled": true,
+      "trigger": {
+        "kind": "help_count",
+        "threshold": 3,
+        "op": "gte",
+        "require_no_success": true
+      },
+      "action": {
+        "target_element_id": "history_panel",
+        "property": "collapsed",
+        "old_value": false,
+        "new_value": true
+      },
+      "constraints": []
+    }
+  ]
+}

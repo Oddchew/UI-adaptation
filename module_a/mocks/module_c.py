@@ -7,7 +7,11 @@ from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Optional
 
 from ..types import AdaptationResult
-from .module_b import CommandBtoC
+
+try:
+    from module_b import CommandBtoC
+except ImportError:
+    from .module_b import CommandBtoC
 
 
 @dataclass

@@ -1,7 +1,7 @@
 [project]
-name = "module-a-adaptation"
-version = "0.7.0"
-description = "Module A — user model and interaction collection for OSTIS adaptive UI (A→B→C)"
+name = "ostis-ui-adaptation"
+version = "0.8.0"
+description = "Run-time adaptation contour A→B→C for OSTIS adaptive UI (Module A + Module B)"
 requires-python = ">=3.10"
 readme = "README.md"
 
@@ -9,4 +9,4 @@ readme = "README.md"
 sc = ["py-sc-client>=0.4.0"]
 
 [tool.setuptools.packages.find]
-include = ["module_a*"]
+include = ["module_a*", "module_b*"]

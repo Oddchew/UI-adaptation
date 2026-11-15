@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 """
-HTTP-сервер: UI ↔ Module A ↔ mocks B/C ↔ (опционально) sc-server.
+HTTP-сервер: UI ↔ Module A ↔ Module B ↔ Mock C ↔ (опционально) sc-server.
 
-Запуск (из корня module_A_adaptation_py):
+Запуск (из корня UI-adaptation):
   python3 integration/server.py
   # браузер: http://127.0.0.1:8765/
 
 Переменные:
   MODULE_A_PORT=8765
   SC_WS_URL=ws://127.0.0.1:8090/ws_json
-  MODULE_A_USE_SC=1          # 0 = только in-memory
+  MODULE_A_USE_SC=0          # 0 = только in-memory (по умолчанию удобнее)
+  ADAPTATION_RULES=path/to/ui.adaptation.json   # правила из редактора; иначе DEFAULT
 """
 
 from __future__ import annotations
@@ -37,19 +38,20 @@ from module_a import (  # noqa: E402
     InteractionEvent,
     ModuleA,
     ModuleAConfig,
-    MockModuleB,
     MockModuleC,
 )
+from module_b import ModuleB  # noqa: E402 — реальный модуль B, не заглушка
 
 STATIC = Path(__file__).resolve().parent / "static"
 PORT = int(os.environ.get("MODULE_A_PORT", "8765"))
 SC_WS = os.environ.get("SC_WS_URL", "ws://127.0.0.1:8090/ws_json")
-USE_SC = os.environ.get("MODULE_A_USE_SC", "1") not in ("0", "false", "False")
+USE_SC = os.environ.get("MODULE_A_USE_SC", "0") not in ("0", "false", "False")
+RULES_PATH = os.environ.get("ADAPTATION_RULES", "").strip()
 
 # --- runtime state ---
 _loop: Optional[asyncio.AbstractEventLoop] = None
 _module_a: Optional[ModuleA] = None
-_module_b: Optional[MockModuleB] = None
+_module_b: Optional[ModuleB] = None
 _module_c: Optional[MockModuleC] = None
 _packages: list[dict[str, Any]] = []
 _ready = False
@@ -88,7 +90,18 @@ async def _bootstrap() -> None:
         print("[module-a] in-memory only")
 
     _module_a = ModuleA(storage, cfg)
-    _module_b = MockModuleB()
+    # Реальный Module B: правила из редактора (.adaptation.json) или DEFAULT_RULES
+    rules_src = RULES_PATH if RULES_PATH else None
+    if rules_src:
+        print(f"[module-b] rules file: {rules_src}")
+    else:
+        default_json = ROOT / "module_b" / "rules_default.json"
+        if default_json.is_file():
+            rules_src = str(default_json)
+            print(f"[module-b] rules file: {rules_src}")
+        else:
+            print("[module-b] built-in DEFAULT_RULES")
+    _module_b = ModuleB(rules=rules_src)
     _module_c = MockModuleC()
 
     async def on_cmd(cmd):

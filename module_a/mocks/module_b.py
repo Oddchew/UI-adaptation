@@ -1,35 +1,46 @@
-"""Заглушка модуля B."""
+"""Заглушка модуля B (совместима с реальным module_b.ModuleB).
+
+Для продакшена используйте:
+    from module_b import ModuleB
+"""
 
 from __future__ import annotations
 
 import time
 import uuid
-from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional
 
-from ..types import PackageAtoB, PackageTrigger
+from module_a.types import PackageAtoB, PackageTrigger
 
+try:
+    from module_b.models import CommandBtoC
+except ImportError:
+    from dataclasses import dataclass, field
 
-@dataclass
-class CommandBtoC:
-    request_id: str
-    interface_id: str
-    user_id: str
-    base_version_id: str
-    target_element_id: str
-    property: str
-    old_value: Any
-    new_value: Any
-    reason: str
-    rule_id: str
-    source_package_trigger: Optional[str] = None
-    created_at: str = ""
+    @dataclass
+    class CommandBtoC:  # type: ignore[no-redef]
+        request_id: str
+        interface_id: str
+        user_id: str
+        base_version_id: str
+        target_element_id: str
+        property: str
+        old_value: Any
+        new_value: Any
+        reason: str
+        rule_id: str
+        source_event_ids: list[str] = field(default_factory=list)
+        constraints: list[str] = field(default_factory=list)
+        source_package_trigger: Optional[str] = None
+        created_at: str = ""
 
 
 CommandHandler = Callable[[CommandBtoC], Awaitable[None] | None]
 
 
 class MockModuleB:
+    """Упрощённая заглушка (2 правила). Для полной логики — ModuleB."""
+
     def __init__(self) -> None:
         self._applied: set[str] = set()
         self._on_command: Optional[CommandHandler] = None
