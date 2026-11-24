@@ -203,17 +203,28 @@ class ScUiModelAdapter:
 
 
 class ScModelRuntime:
-    """Apply one UI property in SC, then obtain confirmation from a renderer.
+    """Apply one UI property in SC via ExclusiveScWriter, then confirm with a renderer.
 
     A scoped request requires a resolver for an existing per-session SC model
     and a renderer that accepts user_id and session_id.
     """
-    def __init__(self, model_adapter: ScUiModelAdapter, renderer: Any, scope_resolver=None) -> None:
+    def __init__(
+        self,
+        model_adapter: ScUiModelAdapter,
+        renderer: Any,
+        scope_resolver=None,
+        writer: Any = None,
+    ) -> None:
         if not model_adapter.exclusive_writer:
             raise ScModelError('SC runtime requires an exclusive writer')
         self.model_adapter = model_adapter
         self.renderer = renderer
         self.scope_resolver = scope_resolver
+        # Prefer explicit ExclusiveScWriter; create one if omitted.
+        if writer is None:
+            from .sc_writer import ExclusiveScWriter
+            writer = ExclusiveScWriter(model_adapter)
+        self.writer = writer
         self._lock = asyncio.Lock()
 
     async def activate(self, interface_id: str, model: dict, *, user_id=None, session_id=None) -> None:
@@ -250,7 +261,16 @@ class ScModelRuntime:
                 raise ScModelError('SC runtime requires a single-property update')
             if changes:
                 component_id, key, old, new = changes[0]
-                await self.model_adapter.update_property(physical_id, component_id, key, old, new)
+                result = await self.writer.apply(
+                    interface_id=physical_id,
+                    component_id=component_id,
+                    property=key,
+                    expected=old,
+                    new_value=new,
+                    request_id=f'sc-runtime:{physical_id}:{component_id}:{key}',
+                )
+                if not result.ok and result.error not in (None, 'no_change_required'):
+                    raise ScModelError(f'SC write failed: {result.error}')
             if session_id:
                 await self.renderer.activate(interface_id, model, user_id=user_id, session_id=session_id)
             else:
