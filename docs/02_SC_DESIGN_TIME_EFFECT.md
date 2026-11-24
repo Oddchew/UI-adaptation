@@ -74,3 +74,15 @@ cp sc/user_model_and_events.scs sc/module_c_adaptation.scs sc/adaptation_effect_
 - SC writer гарантирует порядок только в одном процессе.
 - Оценка эффекта — эвристика; для гранта нужны статистические критерии и A/B.
 - Каталог синхронизируется **вручную** с `catalog.md`; автоматический diff с редактором — следующий шаг.
+
+## 6. Module C + ExclusiveScWriter (интеграция)
+
+С 2026-11-24:
+
+| Режим | Переменная | Поведение |
+|-------|------------|-----------|
+| Browser/SQLite only | `MODULE_C_USE_SC=0` (default) | `ModuleC` → `BrowserRuntime`, без SC |
+| SC runtime | `MODULE_C_USE_SC=1` | `ScModelRuntime(adapter, BrowserRuntime, writer=ExclusiveScWriter)` — запись свойства через CAS, затем подтверждение экрана |
+| Dual-write (тест/гибрид) | `ModuleC(..., sc_writer=writer)` при browser runtime | После валидации команда сначала идёт в `sc_writer.apply`, при ошибке `failure_reason=sc_write:…` |
+
+`ScModelRuntime` больше не вызывает `adapter.update_property` напрямую — только через `ExclusiveScWriter`.
