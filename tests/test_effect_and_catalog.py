@@ -89,5 +89,49 @@ class EffectTrackerTest(unittest.TestCase):
         self.assertIn("R_hint_after_2_errors", scores)
 
 
+class LinkCatalogTest(unittest.TestCase):
+    def test_link_kinds(self):
+        from module_c.catalog import LINK_KINDS, validate_link, ACTION_COMPONENT_TYPES
+        self.assertIn("input_target", LINK_KINDS)
+        self.assertIn("output_target", LINK_KINDS)
+        self.assertIsNone(validate_link("input_target", "button", "text_field"))
+        self.assertEqual(validate_link("input_target", "window", "text_field"), "invalid_link_source_type")
+        self.assertEqual(validate_link("output_target", "button", "divider"), "invalid_link_target_type")
+        self.assertEqual(ACTION_COMPONENT_TYPES, frozenset({"button", "select", "menu_item"}))
+
+    def test_action_id_only_on_triggers(self):
+        from module_c.catalog import component_allows_action_id
+        self.assertTrue(component_allows_action_id("button"))
+        self.assertFalse(component_allows_action_id("text_field"))
+
+    def test_normalize_rejects_action_id_on_text(self):
+        from module_c.model import normalize_model
+        model = {
+            "id": "ui",
+            "title": "t",
+            "components": [
+                {"id": "t1", "typeId": "text", "props": {"visible": True, "action_id": "x"}},
+            ],
+            "links": [],
+        }
+        with self.assertRaises(ValueError) as ctx:
+            normalize_model(model, "ui")
+        self.assertEqual(str(ctx.exception), "action_id_not_allowed")
+
+    def test_normalize_accepts_input_target(self):
+        from module_c.model import normalize_model
+        model = {
+            "id": "ui",
+            "title": "t",
+            "components": [
+                {"id": "b1", "typeId": "button", "props": {"visible": True, "action_id": "run"}},
+                {"id": "f1", "typeId": "text_field", "props": {"visible": True}},
+            ],
+            "links": [{"id": "l1", "kind": "input_target", "sourceId": "b1", "targetId": "f1"}],
+        }
+        out = normalize_model(model, "ui")
+        self.assertEqual(out["links"][0]["kind"], "input_target")
+
+
 if __name__ == "__main__":
     unittest.main()
