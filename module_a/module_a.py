@@ -20,6 +20,7 @@ from .types import (
 )
 from .user_model_manager import UserModelManager
 from .validation import validate_interaction_event
+from .effect_tracker import EffectTracker, EffectTrackerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +32,7 @@ class ModuleA:
         self,
         storage: Optional[IStorage] = None,
         config: Optional[ModuleAConfig] = None,
+        effect_tracker: Optional[EffectTracker] = None,
     ) -> None:
         self.config = config or DEFAULT_CONFIG
         self._storage = storage or InMemoryStorage(self.config)
@@ -40,6 +42,7 @@ class ModuleA:
         self._periodic_tasks: dict[str, asyncio.Task] = {}
         self._interface_by_user: dict[str, str] = {}
         self._disposed = False
+        self.effect_tracker = effect_tracker or EffectTracker(EffectTrackerConfig())
 
     def set_package_handler(self, handler: PackageHandler) -> None:
         self._on_package = handler
@@ -51,6 +54,19 @@ class ModuleA:
         self._interface_by_user[event.user_id] = event.interface_id
 
         await self._mgr.process_event(event)
+
+        # Score pending adaptations when enough post-events accumulate
+        try:
+            events = await self._mgr.get_all_events(event.user_id)
+            scored = self.effect_tracker.on_events(event.user_id, events)
+            if scored:
+                model = await self._mgr.get_model(event.user_id)
+                if model is not None:
+                    model.rule_scores = self.effect_tracker.all_rule_scores()
+                    model.effect_summary = self.effect_tracker.snapshot_for_model()
+                    await self._storage.save_user_model(model)
+        except Exception:
+            logger.exception("ModuleA: effect scoring error")
 
         should_send = False
         trigger = PackageTrigger.THRESHOLD
@@ -77,6 +93,27 @@ class ModuleA:
         if self._disposed:
             raise RuntimeError("ModuleA is disposed")
         await self._mgr.record_adaptation_result(result)
+        # Register applied adaptation for later effect evaluation
+        try:
+            model = await self._mgr.get_model(result.user_id)
+            baseline_err = float(model.observation.recent_error_rate) if model else 0.0
+            baseline_help = float(model.observation.recent_help_rate) if model else 0.0
+            baseline_suc = int(model.counters.successful_actions) if model else 0
+            rule_id = None
+            if result.reason and result.reason.startswith("R_"):
+                rule_id = result.reason
+            # Prefer explicit rule from reason / status fields when present
+            if getattr(result, "status", None) and isinstance(result.status, str) and result.status.startswith("R_"):
+                rule_id = result.status
+            self.effect_tracker.on_applied(
+                result,
+                rule_id=rule_id or result.reason,
+                baseline_error_rate=baseline_err,
+                baseline_help_rate=baseline_help,
+                baseline_success_count=baseline_suc,
+            )
+        except Exception:
+            logger.exception("ModuleA: effect registration error")
 
     async def force_send_package(self, user_id: str, interface_id: str) -> PackageAtoB:
         if self._disposed:
