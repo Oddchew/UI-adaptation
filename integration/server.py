@@ -9,7 +9,8 @@ HTTP-сервер: UI ↔ Module A ↔ Module B ↔ Mock C ↔ (опционал
 Переменные:
   MODULE_A_PORT=8765
   SC_WS_URL=ws://127.0.0.1:8090/ws_json
-  MODULE_A_USE_SC=0          # 0 = только in-memory (по умолчанию удобнее)
+  MODULE_A_USE_SC=0          # 0 = только in-memory для модели пользователя
+  MODULE_C_USE_SC=0          # 1 = Module C пишет свойства UI через ExclusiveScWriter + ScModelRuntime
   ADAPTATION_RULES=path/to/ui.adaptation.json   # правила из редактора; иначе DEFAULT
 """
 
@@ -46,6 +47,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 PORT = int(os.environ.get("MODULE_A_PORT", "8765"))
 SC_WS = os.environ.get("SC_WS_URL", "ws://127.0.0.1:8090/ws_json")
 USE_SC = os.environ.get("MODULE_A_USE_SC", "0") not in ("0", "false", "False")
+USE_SC_C = os.environ.get("MODULE_C_USE_SC", "0") not in ("0", "false", "False")
 RULES_PATH = os.environ.get("ADAPTATION_RULES", "").strip()
 
 # --- runtime state ---
@@ -131,8 +133,31 @@ async def _bootstrap() -> None:
     _repository = SQLiteRepository(os.environ.get('MODULE_C_DB', str(ROOT / 'module_c.sqlite3')))
     if not await _repository.current('python_tutor_model'):
         _repository.register('python_tutor_model', default_model())
-    _runtime = BrowserRuntime()
-    _module_c = ModuleC(_repository, _runtime)
+    browser = BrowserRuntime()
+    _runtime = browser
+    sc_writer = None
+    if USE_SC_C:
+        try:
+            from module_c.sc_model import ScUiModelAdapter, ScModelRuntime
+            from module_c.sc_writer import ExclusiveScWriter
+            adapter = ScUiModelAdapter(SC_WS, exclusive_writer=True)
+            await adapter.connect()
+            sc_writer = ExclusiveScWriter(adapter)
+            # SC is source of truth for property values; browser confirms screen.
+            _runtime = ScModelRuntime(adapter, browser, writer=sc_writer)
+            print(f"[module-c] SC writer enabled ({SC_WS})")
+        except Exception as exc:
+            print(f"[module-c] MODULE_C_USE_SC failed, falling back to browser only: {exc}")
+            sc_writer = None
+            _runtime = browser
+    else:
+        print("[module-c] browser/SQLite only (MODULE_C_USE_SC=0)")
+    # When ScModelRuntime is used, do not dual-write via ModuleC.sc_writer.
+    _module_c = ModuleC(
+        _repository,
+        _runtime,
+        sc_writer=None if USE_SC_C and sc_writer is not None else sc_writer,
+    )
     _module_b.set_version_provider(_module_c.active_version)
 
     async def on_cmd(cmd):
@@ -242,6 +267,7 @@ class Handler(BaseHTTPRequestHandler):
                     "ok": _ready,
                     "sc": _sc_ok,
                     "use_sc": USE_SC,
+                    "use_sc_c": USE_SC_C,
                     "packages": len(_packages),
                 },
             )
