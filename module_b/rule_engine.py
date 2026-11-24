@@ -146,10 +146,26 @@ def evaluate_declarative_rules(
     pkg: PackageAtoB, rules: list[AdaptationRule]
 ) -> list[RuleMatch]:
     matches: list[RuleMatch] = []
+    scores = getattr(pkg.model_snapshot, "rule_scores", None) or {}
     for rule in rules:
         if not rule_matches(pkg, rule):
             continue
+        # Skip rules that historically harm the user (mean effect score < -0.05, ≥3 samples)
+        mean = scores.get(rule.id)
+        if mean is not None and mean < -0.05:
+            # still allow if only 1-2 samples (noise); require evidence
+            # samples count is not in rule_scores map; treat strong negative only
+            if mean < -0.15:
+                continue
         value, src_ids = _metric(pkg, rule)
+        # Adjust priority: lower priority number = preferred.
+        # Positive effectiveness lowers effective priority (boosts rule).
+        adj = 0
+        if mean is not None:
+            if mean > 0.05:
+                adj = -1
+            elif mean < -0.05:
+                adj = 2
         matches.append(
             RuleMatch(
                 rule_id=rule.id,
@@ -159,7 +175,7 @@ def evaluate_declarative_rules(
                 new_value=rule.action.new_value,
                 reason=f"{rule.trigger.kind.value}={value} (threshold {rule.trigger.op.value} {rule.trigger.threshold})",
                 source_event_ids=src_ids,
-                priority=rule.priority,
+                priority=rule.priority + adj,
                 constraints=list(rule.constraints),
             )
         )
@@ -169,4 +185,4 @@ def evaluate_declarative_rules(
 def choose_minimal_intervention(matches: list[RuleMatch]) -> Optional[RuleMatch]:
     if not matches:
         return None
-    return min(matches, key=lambda m: m.priority)
+    return min(matches, key=lambda m: (m.priority, m.rule_id))
