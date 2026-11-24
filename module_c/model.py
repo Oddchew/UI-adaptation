@@ -11,8 +11,11 @@ from typing import Any
 from .catalog import (
     ADAPTABLE_PROPERTIES,
     COMPONENT_TYPES,
+    LINK_KINDS,
     PROPERTY_TYPES,
+    component_allows_action_id,
     default_policy_allowed,
+    validate_link,
 )
 
 
@@ -39,12 +42,24 @@ def normalize_model(model: dict, interface_id: str) -> dict:
         ids = [item.get('id') for item in result['components']]
         if any(not isinstance(x, str) or not x for x in ids) or len(ids) != len(set(ids)):
             raise ValueError('ambiguous_component_id')
-        if any(item.get('typeId') not in COMPONENT_TYPES or not isinstance(item.get('props'), dict) for item in result['components']):
-            raise ValueError('invalid_component')
+        type_by_id = {}
+        for item in result['components']:
+            if item.get('typeId') not in COMPONENT_TYPES or not isinstance(item.get('props'), dict):
+                raise ValueError('invalid_component')
+            type_by_id[item['id']] = item['typeId']
+            # action_id is only meaningful for button / select / menu_item
+            if 'action_id' in item['props'] and not component_allows_action_id(item['typeId']):
+                raise ValueError('action_id_not_allowed')
         if not isinstance(result.get('links'), list):
             raise ValueError('invalid_links')
-        if any(link.get('kind') != 'contains' or link.get('sourceId') not in ids or link.get('targetId') not in ids for link in result['links']):
-            raise ValueError('invalid_link')
+        for link in result['links']:
+            kind = link.get('kind')
+            src, tgt = link.get('sourceId'), link.get('targetId')
+            if kind not in LINK_KINDS or src not in ids or tgt not in ids:
+                raise ValueError('invalid_link')
+            err = validate_link(kind, type_by_id[src], type_by_id[tgt])
+            if err:
+                raise ValueError(err)
         return result
     result = tutor_model(interface_id)
     for component in result['components']:
