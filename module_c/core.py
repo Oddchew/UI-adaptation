@@ -227,9 +227,19 @@ class SQLiteRepository(MemoryRepository):
 
 
 class ModuleC:
-    def __init__(self, repository: Repository, runtime: Runtime, timeout: float = 2.0, policy: AdaptationPolicy | None = None) -> None:
+    def __init__(
+        self,
+        repository: Repository,
+        runtime: Runtime,
+        timeout: float = 2.0,
+        policy: AdaptationPolicy | None = None,
+        sc_writer: Any = None,
+    ) -> None:
         self.repository, self.runtime, self.timeout = repository, runtime, timeout
         self.policy = policy or AdaptationPolicy()
+        # Optional dual-write mirror into SC (ExclusiveScWriter / NullScWriter).
+        # When runtime is already ScModelRuntime, leave sc_writer=None to avoid double write.
+        self.sc_writer = sc_writer
         self._locks: dict[str, asyncio.Lock] = {}
         self._requests_lock = asyncio.Lock()
         self._on_application = None
@@ -370,6 +380,19 @@ class ModuleC:
                     component_by_id(candidate, command.target_element_id)['props'][command.property] = command.new_value
                     try:
                         await self.repository.prepare(command.request_id, key, {'command': asdict(command), 'version_before': before})
+                        # Optional SC dual-write before screen activation (skipped when
+                        # runtime is already ScModelRuntime which writes via ExclusiveScWriter).
+                        if self.sc_writer is not None:
+                            sc_result = await self.sc_writer.apply(
+                                interface_id=command.interface_id,
+                                component_id=command.target_element_id,
+                                property=command.property,
+                                expected=command.old_value,
+                                new_value=command.new_value,
+                                request_id=command.request_id,
+                            )
+                            if not sc_result.ok and sc_result.error not in (None, 'no_change_required'):
+                                raise RuntimeError(f'sc_write:{sc_result.error}')
                         await asyncio.wait_for(self._activate(command, candidate), self.timeout)
                         response.status = 'applied'
                         response.duration_ms = int((time.monotonic() - started) * 1000)
@@ -377,7 +400,13 @@ class ModuleC:
                         response.active_version_after = await asyncio.wait_for(self.repository.commit(key, before, candidate, entry), max(0.001, self.timeout - (time.monotonic() - started)))
                     except Exception as exc:
                         response.status = 'failed'
-                        response.failure_reason = 'runtime_timeout' if isinstance(exc, asyncio.TimeoutError) else 'application_failed'
+                        err = str(exc)
+                        if isinstance(exc, asyncio.TimeoutError):
+                            response.failure_reason = 'runtime_timeout'
+                        elif err.startswith('sc_write:'):
+                            response.failure_reason = err
+                        else:
+                            response.failure_reason = 'application_failed'
                         try:
                             await asyncio.wait_for(self._activate(command, current[1]), self.timeout)
                         except Exception:
