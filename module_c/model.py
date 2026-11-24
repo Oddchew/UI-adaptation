@@ -1,22 +1,19 @@
-"""Platform-neutral snapshot of the SC UI model and adaptation policy."""
+"""Platform-neutral snapshot of the SC UI model and adaptation policy.
+
+PROPERTY_TYPES / COMPONENT_TYPES come from catalog.py (aligned with
+ostis-ui-editor docs/catalog.md).
+"""
 from __future__ import annotations
 
 import copy
 from typing import Any
 
-PROPERTY_TYPES = {
-    'name': str, 'x': (int, float), 'y': (int, float), 'width': (int, float),
-    'height': (int, float), 'order': (int, float), 'visible': bool, 'enabled': bool,
-    'opacity': (int, float), 'text_value': str, 'tooltip': str, 'action_id': str,
-    'background_color': str, 'color': str, 'border_color': str,
-    'border_width': (int, float), 'border_style': str, 'corner_radius': (int, float),
-    'font_size': (int, float), 'font_weight': str, 'text_align': str,
-    'padding': (int, float), 'margin': (int, float), 'min_width': (int, float),
-    'min_height': (int, float), 'max_width': (int, float), 'max_height': (int, float),
-}
-COMPONENT_TYPES = frozenset(('image', 'sound', 'text', 'divider', 'spacer', 'menu',
-    'menu_bar', 'list', 'scroll', 'window', 'text_field', 'text_area', 'slider',
-    'select', 'button', 'menu_item'))
+from .catalog import (
+    ADAPTABLE_PROPERTIES,
+    COMPONENT_TYPES,
+    PROPERTY_TYPES,
+    default_policy_allowed,
+)
 
 
 def tutor_model(interface_id: str = 'python_tutor_model') -> dict[str, Any]:
@@ -75,10 +72,23 @@ def display_state(model: dict) -> dict:
 
 
 class AdaptationPolicy:
-    """Explicit per-interface access; user data is never a writable UI property."""
+    """Explicit per-interface access; user data is never a writable UI property.
+
+    Default policy for the tutor demo keeps the previous narrow allow-list.
+    For interfaces loaded from design-time, use from_catalog(component_ids).
+    """
+
     def __init__(self, allowed: dict[str, set[str]] | None = None) -> None:
         self.allowed = allowed if allowed is not None else {
             'hints_panel': {'visible'}, 'history_content': {'visible'}}
+
+    @classmethod
+    def from_catalog(cls, component_ids: list[str], extra: dict[str, set[str]] | None = None) -> "AdaptationPolicy":
+        allowed = default_policy_allowed(component_ids)
+        if extra:
+            for cid, props in extra.items():
+                allowed.setdefault(cid, set()).update(props & ADAPTABLE_PROPERTIES)
+        return cls(allowed)
 
     def validate(self, component: dict, prop: str, value: Any) -> str | None:
         if prop not in PROPERTY_TYPES or prop not in self.allowed.get(component['id'], set()):
