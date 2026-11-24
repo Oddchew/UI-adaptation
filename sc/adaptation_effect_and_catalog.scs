@@ -81,3 +81,27 @@ concept_forbidden_adaptation_property
 concept_ui_text_value <- concept_forbidden_adaptation_property;;
 concept_ui_action_id <- concept_forbidden_adaptation_property;;
 concept_ui_name <- concept_forbidden_adaptation_property;;
+
+// --- Связи design-time (синхрон с ostis-ui-editor docs/catalog.md) ---
+// contains: nrel_ui_contains (уже в abstract_ui_model / редакторе)
+// input_target / output_target: триггер (button|select|menu_item) → цель
+
+nrel_ui_input_target
+=> nrel_main_idtf:
+	[цель ввода UI] (* <- lang_ru;; *);
+	[UI input target] (* <- lang_en;; *);;
+
+nrel_ui_output_target
+=> nrel_main_idtf:
+	[цель вывода UI] (* <- lang_ru;; *);
+	[UI output target] (* <- lang_en;; *);;
+
+// action_id допустим только у button, select, menu_item
+concept_ui_action_component
+=> nrel_main_idtf:
+	[компонент UI с action_id] (* <- lang_ru;; *);
+<- sc_node_class;;
+
+concept_ui_button <- concept_ui_action_component;;
+concept_ui_select <- concept_ui_action_component;;
+concept_ui_menu_item <- concept_ui_action_component;;
