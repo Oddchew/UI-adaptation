@@ -72,6 +72,7 @@ class EffectTracker:
     def __init__(self, config: Optional[EffectTrackerConfig] = None) -> None:
         self.config = config or EffectTrackerConfig()
         self._pending: dict[str, EffectSample] = {}
+        self._finished_request_ids: set[str] = set()
         self._scored: list[EffectSample] = []
         self._rules: dict[tuple[str, str], RuleEffectiveness] = {}
         self._claimed_event_ids: dict[str, datetime] = {}
@@ -86,7 +87,11 @@ class EffectTracker:
         baseline_success_count: int = 0,
         baseline_success_rate: float = 0.0,
     ) -> None:
-        if not result.success or result.request_id in self._pending:
+        if (
+            not result.success
+            or result.request_id in self._pending
+            or result.request_id in self._finished_request_ids
+        ):
             return
         sample = EffectSample(
             request_id=result.request_id,
@@ -182,6 +187,7 @@ class EffectTracker:
 
         for rid in to_drop:
             self._pending.pop(rid, None)
+            self._finished_request_ids.add(rid)
         if len(self._scored) > 200:
             self._scored = self._scored[-200:]
         claim_expiry = timedelta(milliseconds=cfg.expire_after_ms)
