@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import inspect
+import os
 import time
 import uuid
 from pathlib import Path
@@ -104,11 +105,33 @@ class ModuleB:
 
     async def handle_package(self, pkg: PackageAtoB) -> Optional[CommandBtoC]:
         result = await self.decide(pkg)
+        if os.environ.get("UI_RUNTIME_DEBUG") == "1":
+            last = pkg.interaction_events[-1] if pkg.interaction_events else None
+            print(
+                "[debug][B]",
+                "interface=", pkg.interface_id,
+                "events=", len(pkg.interaction_events),
+                "last_action=", getattr(last, "action_id", None),
+                "last_targets=", getattr(last, "new_value", None),
+                "status=", result.status,
+                "reject=", result.reject_message,
+                "command=", result.command,
+                flush=True,
+            )
         if result.status == DecisionStatus.COMMAND and result.command is not None:
             if self._on_command is not None:
                 out = self._on_command(result.command)
                 if inspect.isawaitable(out):
                     out = await out
+                if os.environ.get("UI_RUNTIME_DEBUG") == "1":
+                    print(
+                        "[debug][C]",
+                        "status=", getattr(out, 'status', None),
+                        "failure=", getattr(out, 'failure_reason', None),
+                        "target=", result.command.target_element_id,
+                        "property=", result.command.property,
+                        flush=True,
+                    )
                 if getattr(out, 'status', None) == 'applied' or getattr(out, 'success', False):
                     session = (pkg.interaction_events[-1].session_id or 'default') if pkg.interaction_events else 'default'
                     self._applied.add(self._key(pkg.user_id, result.command.rule_id, session, pkg.interface_id))

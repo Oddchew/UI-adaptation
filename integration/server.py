@@ -74,6 +74,15 @@ class BrowserRuntime:
         token = uuid.uuid4().hex
         future = asyncio.get_running_loop().create_future()
         self.pending[token] = (interface_id, model, future, user_id, session_id)
+        if os.environ.get("UI_RUNTIME_DEBUG") == "1":
+            print(
+                "[debug][RUNTIME] activate",
+                "token=", token,
+                "interface=", interface_id,
+                "user=", user_id,
+                "session=", session_id,
+                flush=True,
+            )
         try:
             if not await future:
                 raise RuntimeError('browser rejected update')
@@ -81,11 +90,32 @@ class BrowserRuntime:
             self.pending.pop(token, None)
 
     def commands(self, user_id, session_id):
-        return [{'token': token, 'interface_id': item[0], 'model': item[1]}
-                for token, item in self.pending.items() if item[3] == user_id and item[4] == session_id]
+        result = [
+            {'token': token, 'interface_id': item[0], 'model': item[1]}
+            for token, item in self.pending.items()
+            if item[3] == user_id and item[4] == session_id
+        ]
+        if self.pending and os.environ.get("UI_RUNTIME_DEBUG") == "1":
+            print(
+                "[debug][RUNTIME] poll",
+                "user=", user_id,
+                "session=", session_id,
+                "pending=", len(self.pending),
+                "matched=", len(result),
+                flush=True,
+            )
+        return result
 
     def acknowledge(self, token, success):
         item = self.pending.get(token)
+        if os.environ.get("UI_RUNTIME_DEBUG") == "1":
+            print(
+                "[debug][RUNTIME] ack",
+                "token=", token,
+                "success=", success,
+                "found=", item is not None,
+                flush=True,
+            )
         if item and not item[2].done():
             item[2].set_result(success)
 
