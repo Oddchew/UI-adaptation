@@ -80,7 +80,7 @@ class BrowserRuntime:
             self.pending.pop(token, None)
 
     def commands(self, user_id, session_id):
-        return [{'token': token, 'interface_id': item[0], 'model': display_state(item[1])}
+        return [{'token': token, 'interface_id': item[0], 'model': item[1]}
                 for token, item in self.pending.items() if item[3] == user_id and item[4] == session_id]
 
     def acknowledge(self, token, success):
