@@ -39,6 +39,10 @@ def normalize_model(model: dict, interface_id: str) -> dict:
         result = copy.deepcopy(model)
         if result.get('id') != interface_id:
             raise ValueError('interface_id_mismatch')
+        if not isinstance(result.get('components'), list) or not isinstance(result.get('links'), list):
+            raise ValueError('invalid_model_structure')
+        if any(not isinstance(item, dict) for item in result['components']):
+            raise ValueError('invalid_component')
         ids = [item.get('id') for item in result['components']]
         if any(not isinstance(x, str) or not x for x in ids) or len(ids) != len(set(ids)):
             raise ValueError('ambiguous_component_id')
