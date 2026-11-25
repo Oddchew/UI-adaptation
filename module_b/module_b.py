@@ -131,6 +131,20 @@ class ModuleB:
             version = await version
         if not version:
             return DecisionResult(status=DecisionStatus.REJECTED, reject_reason=RejectReason.INSUFFICIENT_DATA, reject_message='активная версия интерфейса недоступна')
+        # Backward-compatible controls for the original Python Lab demo only.
+        if pkg.interface_id == 'python_tutor_model' and last and last.event_type.value == 'hint_hide':
+            return DecisionResult(status=DecisionStatus.COMMAND, command=CommandBtoC(
+                request_id=f'req_{uuid.uuid4().hex}', interface_id=pkg.interface_id,
+                user_id=pkg.user_id, base_version_id=version, target_element_id='hints_panel',
+                property='visible', old_value=True, new_value=False, reason='пользователь скрыл подсказку',
+                rule_id='user_hide_hint', source_event_ids=[last.id], created_at=_now_iso(), session_id=session_id))
+        if pkg.interface_id == 'python_tutor_model' and last and last.event_type.value == 'block_open' and last.element_id == 'history_content':
+            return DecisionResult(status=DecisionStatus.COMMAND, command=CommandBtoC(
+                request_id=f'req_{uuid.uuid4().hex}', interface_id=pkg.interface_id,
+                user_id=pkg.user_id, base_version_id=version, target_element_id='history_content',
+                property='visible', old_value=False, new_value=True, reason='пользователь развернул историю',
+                rule_id='user_open_history', source_event_ids=[last.id], created_at=_now_iso(), session_id=session_id))
+
         if pkg.manual_override or pkg.trigger == PackageTrigger.MANUAL_OVERRIDE:
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
@@ -160,7 +174,7 @@ class ModuleB:
         if last:
             scoped.interaction_events = [e for e in pkg.interaction_events if e.interface_id == pkg.interface_id and e.session_id == last.session_id]
         matches = evaluate_declarative_rules(scoped, self._rules)
-        if last and session_key(pkg.interface_id, last.session_id) in pkg.model_snapshot.hint_hidden_sessions:
+        if pkg.interface_id == 'python_tutor_model' and last and session_key(pkg.interface_id, last.session_id) in pkg.model_snapshot.hint_hidden_sessions:
             matches = [m for m in matches if m.target_element_id != 'hints_panel']
         if cfg.ANTI_FLICKER:
             session = (last.session_id or 'default') if last else 'default'
@@ -200,7 +214,7 @@ class ModuleB:
             session_id=session_id,
         )
 
-        if is_forbidden_target(cmd.target_element_id, cfg):
+        if pkg.interface_id == 'python_tutor_model' and is_forbidden_target(cmd.target_element_id, cfg):
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.CONSTRAINT_VIOLATION,
