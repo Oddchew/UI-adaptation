@@ -243,7 +243,7 @@ async def _ensure_interface(interface_id: str) -> None:
     # allow-list. Component IDs are scoped by interface at command validation.
     allowed = dict(_module_c.policy.allowed)
     for component in model["components"]:
-        allowed.setdefault(component["id"], set(ADAPTABLE_PROPERTIES))
+        allowed[component["id"]] = set(ADAPTABLE_PROPERTIES)
     _module_c.policy = AdaptationPolicy(allowed)
 
 
