@@ -285,6 +285,7 @@ class ScModelRuntime:
                     expected=old,
                     new_value=new,
                     request_id=request_id,
+                    expected_version=self.writer.current_version(physical_id, component_id, key),
                 )
                 if not result.ok and result.error not in (None, 'no_change_required'):
                     raise ScModelError(f'SC write failed: {result.error}')
@@ -305,6 +306,7 @@ class ScModelRuntime:
                         expected=new,
                         new_value=old,
                         request_id=f'{request_id}:rollback',
+                        expected_version=result.new_version,
                     )
                     if not rollback_result.ok:
                         raise ScModelError(

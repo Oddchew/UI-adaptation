@@ -63,8 +63,8 @@ class ModuleA:
             if scored:
                 model = await self._mgr.get_model(event.user_id)
                 if model is not None:
-                    model.rule_scores = self.effect_tracker.all_rule_scores()
-                    model.effect_summary = self.effect_tracker.snapshot_for_model()
+                    model.rule_scores = self.effect_tracker.all_rule_scores(event.user_id)
+                    model.effect_summary = self.effect_tracker.snapshot_for_model(event.user_id)
                     await self._storage.save_user_model(model)
         except Exception:
             logger.exception("ModuleA: effect scoring error")

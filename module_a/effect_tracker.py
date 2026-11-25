@@ -73,7 +73,7 @@ class EffectTracker:
         self.config = config or EffectTrackerConfig()
         self._pending: dict[str, EffectSample] = {}
         self._scored: list[EffectSample] = []
-        self._rules: dict[str, RuleEffectiveness] = {}
+        self._rules: dict[tuple[str, str], RuleEffectiveness] = {}
         self._claimed_event_ids: set[str] = set()
 
     def on_applied(
@@ -186,10 +186,11 @@ class EffectTracker:
     def _update_rule(self, sample: EffectSample) -> None:
         if not sample.rule_id or sample.score is None:
             return
-        re = self._rules.get(sample.rule_id)
+        key = (sample.user_id, sample.rule_id)
+        re = self._rules.get(key)
         if re is None:
             re = RuleEffectiveness(rule_id=sample.rule_id)
-            self._rules[sample.rule_id] = re
+            self._rules[key] = re
         re.samples += 1
         re.last_score = sample.score
         if sample.score > 0.02:
@@ -201,27 +202,36 @@ class EffectTracker:
             re.mean_score * (re.samples - 1) + sample.score
         ) / re.samples
 
-    def rule_effectiveness(self, rule_id: str) -> Optional[RuleEffectiveness]:
-        return self._rules.get(rule_id)
+    def rule_effectiveness(self, rule_id: str, user_id: Optional[str] = None) -> Optional[RuleEffectiveness]:
+        if user_id is not None:
+            return self._rules.get((user_id, rule_id))
+        matches = [value for (owner, rid), value in self._rules.items() if rid == rule_id]
+        return matches[0] if len(matches) == 1 else None
 
-    def all_rule_scores(self) -> dict[str, dict[str, float | int]]:
-        return {rid: {"mean_score": re.mean_score, "samples": re.samples}
-                for rid, re in self._rules.items() if re.samples > 0}
+    def all_rule_scores(self, user_id: Optional[str] = None) -> dict[str, dict[str, float | int]]:
+        return {
+            rid: {"mean_score": value.mean_score, "samples": value.samples}
+            for (owner, rid), value in self._rules.items()
+            if value.samples > 0 and (user_id is None or owner == user_id)
+        }
 
     def pending_count(self) -> int:
         return len(self._pending)
 
-    def snapshot_for_model(self) -> dict[str, Any]:
+    def snapshot_for_model(self, user_id: Optional[str] = None) -> dict[str, Any]:
         return {
-            "pending": len(self._pending),
-            "scored": len(self._scored),
+            "pending": sum(1 for sample in self._pending.values()
+                           if user_id is None or sample.user_id == user_id),
+            "scored": sum(1 for sample in self._scored
+                          if user_id is None or sample.user_id == user_id),
             "rules": {
                 rid: {
-                    "samples": re.samples,
-                    "mean_score": round(re.mean_score, 4),
-                    "positive": re.positive,
-                    "negative": re.negative,
+                    "samples": value.samples,
+                    "mean_score": round(value.mean_score, 4),
+                    "positive": value.positive,
+                    "negative": value.negative,
                 }
-                for rid, re in self._rules.items()
+                for (owner, rid), value in self._rules.items()
+                if user_id is None or owner == user_id
             },
         }
