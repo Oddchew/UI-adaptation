@@ -232,13 +232,15 @@ async def _ensure_interface(interface_id: str) -> None:
         raise ValueError("interface_id_required")
     if _repository is None:
         raise RuntimeError("repository_not_ready")
-    if await _repository.current(interface_id):
-        return
-    adapter = getattr(_runtime, "model_adapter", None) if USE_SC_C else None
-    if adapter is None:
-        raise KeyError(f"unknown interface: {interface_id}")
-    model = await adapter.read_model(interface_id)
-    _repository.register(interface_id, model)
+    current = await _repository.current(interface_id)
+    if current:
+        model = current[1]
+    else:
+        adapter = getattr(_runtime, "model_adapter", None) if USE_SC_C else None
+        if adapter is None:
+            raise KeyError(f"unknown interface: {interface_id}")
+        model = await adapter.read_model(interface_id)
+        _repository.register(interface_id, model)
     # Every component from the SC model receives the catalog's safe property
     # allow-list. Component IDs are scoped by interface at command validation.
     allowed = dict(_module_c.policy.allowed)
