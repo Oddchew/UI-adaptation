@@ -183,6 +183,49 @@ class EffectTrackerTest(unittest.TestCase):
         self.assertEqual(tracker.pending_count(), 1)
 
 
+    def test_claimed_event_ids_are_not_arbitrarily_pruned(self):
+        cfg = EffectTrackerConfig(
+            followup_window_ms=1000,
+            min_events_for_score=1,
+            expire_after_ms=60_000,
+        )
+        tracker = EffectTracker(cfg)
+        applied_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+        for request_id, offset_ms in (("req1", 0), ("req2", 500)):
+            tracker.on_applied(
+                AdaptationResult(
+                    request_id=request_id,
+                    interface_id="ui",
+                    user_id="u1",
+                    success=True,
+                    applied_at=(applied_at + timedelta(milliseconds=offset_ms)).isoformat(),
+                    reason="shared_rule",
+                ),
+                rule_id="shared_rule",
+                baseline_error_rate=0.0,
+                baseline_help_rate=0.0,
+            )
+
+        events = [
+            InteractionEvent(
+                id=f"event-{i}",
+                user_id="u1",
+                interface_id="ui",
+                event_type=EventType.SUCCESSFUL_ACTION,
+                timestamp=(applied_at + timedelta(milliseconds=750)).isoformat(),
+            )
+            for i in range(1001)
+        ]
+        scored = tracker.on_events(
+            "u1", events, now=applied_at + timedelta(milliseconds=2000)
+        )
+
+        self.assertEqual([sample.request_id for sample in scored], ["req1"])
+        self.assertEqual(len(tracker._claimed_event_ids), 1001)
+        self.assertEqual(tracker.pending_count(), 1)
+
+
 class LinkCatalogTest(unittest.TestCase):
     def test_link_kinds(self):
         from module_c.catalog import LINK_KINDS, validate_link, ACTION_COMPONENT_TYPES
