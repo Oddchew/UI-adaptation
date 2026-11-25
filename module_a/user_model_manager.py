@@ -232,6 +232,8 @@ class UserModelManager:
             return True, "force"
         model = await self.get_or_create_model(user_id)
         events = await self.get_events_in_window(user_id, event.interface_id if event else None, event.session_id if event else None)
+        if event and event.event_type == EventType.SUCCESSFUL_ACTION and event.action_id:
+            return True, "threshold"
         if events and (events[-1].event_type == EventType.HINT_HIDE or
                        (events[-1].event_type == EventType.BLOCK_OPEN and events[-1].element_id == 'history_content') or
                        (events[-1].event_type == EventType.MANUAL_OVERRIDE and events[-1].property == 'adaptation_mode')):
