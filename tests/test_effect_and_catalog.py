@@ -89,6 +89,18 @@ class EffectTrackerTest(unittest.TestCase):
         self.assertIn("R_hint_after_2_errors", scores)
         self.assertEqual(scores["R_hint_after_2_errors"]["samples"], 1)
 
+        # A repeated delivery of the same application result must not reopen it.
+        tracker.on_applied(
+            result,
+            rule_id="R_hint_after_2_errors",
+            baseline_error_rate=0.5,
+            baseline_help_rate=0.2,
+        )
+        self.assertEqual(tracker.pending_count(), 0)
+        self.assertEqual(tracker.on_events("u1", events, now=now), [])
+        self.assertEqual(
+            tracker.all_rule_scores()["R_hint_after_2_errors"]["samples"], 1
+        )
 
     def test_rule_scores_are_isolated_per_user(self):
         cfg = EffectTrackerConfig(
