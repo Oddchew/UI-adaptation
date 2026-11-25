@@ -90,6 +90,99 @@ class EffectTrackerTest(unittest.TestCase):
         self.assertEqual(scores["R_hint_after_2_errors"]["samples"], 1)
 
 
+    def test_rule_scores_are_isolated_per_user(self):
+        cfg = EffectTrackerConfig(
+            followup_window_ms=100,
+            min_events_for_score=1,
+            expire_after_ms=60_000,
+        )
+        tracker = EffectTracker(cfg)
+        applied_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+        for user_id, baseline_error_rate, event_type in (
+            ("u1", 0.0, EventType.ERROR),
+            ("u2", 1.0, EventType.SUCCESSFUL_ACTION),
+        ):
+            result = AdaptationResult(
+                request_id=f"req-{user_id}",
+                interface_id="ui",
+                user_id=user_id,
+                success=True,
+                applied_at=applied_at.isoformat(),
+                reason="shared_rule",
+            )
+            tracker.on_applied(
+                result,
+                rule_id="shared_rule",
+                baseline_error_rate=baseline_error_rate,
+                baseline_help_rate=0.0,
+            )
+            event = InteractionEvent(
+                id=f"event-{user_id}",
+                user_id=user_id,
+                interface_id="ui",
+                event_type=event_type,
+                timestamp=(applied_at + timedelta(milliseconds=200)).isoformat(),
+            )
+            tracker.on_events(
+                user_id,
+                [event],
+                now=applied_at + timedelta(milliseconds=500),
+            )
+
+        u1_score = tracker.all_rule_scores("u1")["shared_rule"]["mean_score"]
+        u2_score = tracker.all_rule_scores("u2")["shared_rule"]["mean_score"]
+        self.assertLess(u1_score, 0)
+        self.assertGreater(u2_score, 0)
+        self.assertEqual(tracker.all_rule_scores("u1")["shared_rule"]["samples"], 1)
+        self.assertEqual(tracker.all_rule_scores("u2")["shared_rule"]["samples"], 1)
+
+    def test_followup_events_are_not_reused_by_overlapping_samples(self):
+        cfg = EffectTrackerConfig(
+            followup_window_ms=1000,
+            min_events_for_score=2,
+            expire_after_ms=60_000,
+        )
+        tracker = EffectTracker(cfg)
+        applied_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+        for request_id, offset_ms in (("req1", 0), ("req2", 100)):
+            result = AdaptationResult(
+                request_id=request_id,
+                interface_id="ui",
+                user_id="u1",
+                success=True,
+                applied_at=(applied_at + timedelta(milliseconds=offset_ms)).isoformat(),
+                reason="shared_rule",
+            )
+            tracker.on_applied(
+                result,
+                rule_id="shared_rule",
+                baseline_error_rate=0.0,
+                baseline_help_rate=0.0,
+            )
+
+        events = [
+            InteractionEvent(
+                id=f"e{i}",
+                user_id="u1",
+                interface_id="ui",
+                event_type=EventType.SUCCESSFUL_ACTION,
+                timestamp=(applied_at + timedelta(milliseconds=offset)).isoformat(),
+            )
+            for i, offset in enumerate((200, 400), start=1)
+        ]
+        scored = tracker.on_events(
+            "u1",
+            events,
+            now=applied_at + timedelta(milliseconds=2000),
+        )
+
+        self.assertEqual(len(scored), 1)
+        self.assertEqual(scored[0].request_id, "req1")
+        self.assertEqual(tracker.pending_count(), 1)
+
+
 class LinkCatalogTest(unittest.TestCase):
     def test_link_kinds(self):
         from module_c.catalog import LINK_KINDS, validate_link, ACTION_COMPONENT_TYPES
