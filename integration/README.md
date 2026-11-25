@@ -132,3 +132,25 @@ Runtime строит DOM по `components` и связям `contains`, без п
 
 Для изменения связанного элемента `new_value` содержит его `value`, текущие `input_values` и `output_target_ids`.
 Эти данные фиксируют контекст взаимодействия для Module A; сами по себе они не меняют `text_value`, `action_id` или другие свойства SC-модели.
+### Декларативные действия через output_target
+
+Кнопка/пункт меню с `action_id` отправляет `successful_action`. Module A передаёт такой пакет в Module B сразу, не ожидая накопления статистики. Для правила можно задать `trigger.action_id`, а в `action.target_element_id` использовать `$output_target`:
+
+```json
+{
+  "id": "save_calendar_rule",
+  "trigger": {
+    "kind": "success_count",
+    "threshold": 1,
+    "action_id": "save_calendar"
+  },
+  "action": {
+    "target_element_id": "$output_target",
+    "property": "visible",
+    "old_value": false,
+    "new_value": true
+  }
+}
+```
+
+`$output_target` разрешается только при наличии ровно одной `nrel_ui_output_target` связи у компонента, отправившего действие. При отсутствии связи или нескольких выходных целях правило не срабатывает. После разрешения цели команда проходит обычные проверки Module C: наличие компонента/свойства, whitelist, старое значение, версия модели и подтверждение renderer. Изменение `text_value` и `action_id` по-прежнему запрещено.
