@@ -131,19 +131,6 @@ class ModuleB:
             version = await version
         if not version:
             return DecisionResult(status=DecisionStatus.REJECTED, reject_reason=RejectReason.INSUFFICIENT_DATA, reject_message='активная версия интерфейса недоступна')
-        if last and last.event_type.value == 'hint_hide':
-            return DecisionResult(status=DecisionStatus.COMMAND, command=CommandBtoC(
-                request_id=f'req_{uuid.uuid4().hex}', interface_id=pkg.interface_id,
-                user_id=pkg.user_id, base_version_id=version, target_element_id='hints_panel',
-                property='visible', old_value=True, new_value=False, reason='пользователь скрыл подсказку',
-                rule_id='user_hide_hint', source_event_ids=[last.id], created_at=_now_iso(), session_id=session_id))
-        if last and last.event_type.value == 'block_open' and last.element_id == 'history_content':
-            return DecisionResult(status=DecisionStatus.COMMAND, command=CommandBtoC(
-                request_id=f'req_{uuid.uuid4().hex}', interface_id=pkg.interface_id,
-                user_id=pkg.user_id, base_version_id=version, target_element_id='history_content',
-                property='visible', old_value=False, new_value=True, reason='пользователь развернул историю',
-                rule_id='user_open_history', source_event_ids=[last.id], created_at=_now_iso(), session_id=session_id))
-
         if pkg.manual_override or pkg.trigger == PackageTrigger.MANUAL_OVERRIDE:
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
@@ -193,11 +180,7 @@ class ModuleB:
                 reject_message="после стратегии минимального вмешательства пусто",
             )
 
-        constraints = list(chosen.constraints) or [
-            "не изменять code_editor.content",
-            "не изменять этап задания",
-            "не изменять критерии проверки",
-        ]
+        constraints = list(chosen.constraints)
 
         cmd = CommandBtoC(
             request_id=f"req_{uuid.uuid4().hex[:10]}",
