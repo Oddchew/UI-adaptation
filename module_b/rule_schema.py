@@ -39,6 +39,7 @@ class RuleTrigger:
     op: CompareOp = CompareOp.GTE
     # опционально: только события с этим element_id
     element_id: Optional[str] = None
+    action_id: Optional[str] = None
     # для help_count: требовать отсутствие successful_action
     require_no_success: bool = False
 
@@ -82,6 +83,7 @@ class AdaptationRule:
                 threshold=float(tr.get("threshold", 1)),
                 op=CompareOp(tr.get("op", "gte")),
                 element_id=tr.get("element_id"),
+                action_id=tr.get("action_id"),
                 require_no_success=bool(tr.get("require_no_success", False)),
             ),
             action=RuleAction(
