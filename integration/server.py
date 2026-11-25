@@ -48,6 +48,7 @@ PORT = int(os.environ.get("MODULE_A_PORT", "8765"))
 SC_WS = os.environ.get("SC_WS_URL", "ws://127.0.0.1:8090/ws_json")
 USE_SC = os.environ.get("MODULE_A_USE_SC", "0") not in ("0", "false", "False")
 USE_SC_C = os.environ.get("MODULE_C_USE_SC", "0") not in ("0", "false", "False")
+USE_SC_SHARED_SESSION_MODEL = os.environ.get("MODULE_C_ALLOW_SHARED_SESSION_MODEL", "0") not in ("0", "false", "False")
 RULES_PATH = os.environ.get("ADAPTATION_RULES", "").strip()
 
 # --- runtime state ---
@@ -144,7 +145,12 @@ async def _bootstrap() -> None:
             await adapter.connect()
             sc_writer = ExclusiveScWriter(adapter)
             # SC is source of truth for property values; browser confirms screen.
-            _runtime = ScModelRuntime(adapter, browser, writer=sc_writer)
+            _runtime = ScModelRuntime(
+                adapter,
+                browser,
+                writer=sc_writer,
+                allow_shared_session_model=USE_SC_SHARED_SESSION_MODEL,
+            )
             print(f"[module-c] SC writer enabled ({SC_WS})")
         except Exception as exc:
             print(f"[module-c] MODULE_C_USE_SC failed, falling back to browser only: {exc}")
@@ -268,6 +274,7 @@ class Handler(BaseHTTPRequestHandler):
                     "sc": _sc_ok,
                     "use_sc": USE_SC,
                     "use_sc_c": USE_SC_C,
+                    "allow_shared_session_model": USE_SC_SHARED_SESSION_MODEL,
                     "packages": len(_packages),
                 },
             )
