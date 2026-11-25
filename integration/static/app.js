@@ -47,6 +47,8 @@ function applyStyle(element, props) {
   if (props.padding !== undefined) element.style.padding = `${props.padding}px`;
   if (props.margin !== undefined) element.style.margin = `${props.margin}px`;
   if (props.tooltip) element.title = props.tooltip;
+  if (element.tagName === 'P') element.style.whiteSpace = 'pre-wrap';
+  if (element.classList.contains('sc-ui-scroll')) element.style.overflow = 'auto';
 }
 
 function createComponent(component) {
@@ -112,14 +114,31 @@ function renderInterface(model) {
     childIds.add(link.targetId);
   }
   const rendered = new Set();
-  function mount(id, parent) {
+  const bounds = model.components.reduce((size, component) => {
+    const props = component.props || {};
+    return {
+      width: Math.max(size.width, (props.x || 0) + (props.width || 0)),
+      height: Math.max(size.height, (props.y || 0) + (props.height || 0))
+    };
+  }, {width: 0, height: 0});
+  root.style.position = 'relative';
+  root.style.display = 'block';
+  root.style.padding = '0';
+  root.style.width = `${Math.max(bounds.width + 16, 320)}px`;
+  root.style.height = `${Math.max(bounds.height + 16, 180)}px`;
+  function mount(id, parent, parentOrigin = {x: 0, y: 0}) {
     const component = byId.get(id);
     if (!component || rendered.has(id)) return;
     rendered.add(id);
-    const element = createComponent(component);
-    parent.append(element);
-    for (const childId of children.get(id) || []) mount(childId, element);
     const props = component.props || {};
+    const element = createComponent(component);
+    element.style.position = 'absolute';
+    element.style.left = `${(props.x || 0) - parentOrigin.x}px`;
+    element.style.top = `${(props.y || 0) - parentOrigin.y}px`;
+    parent.append(element);
+    for (const childId of children.get(id) || []) {
+      mount(childId, element, {x: props.x || 0, y: props.y || 0});
+    }
     if (component.typeId === 'button' || component.typeId === 'menu_item') {
       element.addEventListener('click', () => sendEvent({
         event_type: 'successful_action', element_id: id, action_id: props.action_id || undefined
@@ -132,7 +151,6 @@ function renderInterface(model) {
   const roots = model.components.filter(component => !childIds.has(component.id));
   roots.sort((a, b) => (a.props?.order ?? 0) - (b.props?.order ?? 0));
   for (const component of roots) mount(component.id, root);
-  for (const component of model.components) mount(component.id, root);
   document.getElementById('ui-view').textContent = JSON.stringify(model, null, 2);
   document.getElementById('interface-title').textContent = model.title || model.id;
 }
