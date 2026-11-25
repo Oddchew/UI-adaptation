@@ -301,19 +301,16 @@ function renderInterface(model) {
           element_id: id,
           action_id: props.action_id || undefined,
           property: 'input_value',
-          new_value: readInputValue(element)
+          new_value: null
         };
-        if (linkedInputs.length) event.new_value = {
-          value: event.new_value,
-          input_values: readLinkedInputs(root, linkedInputs)
-        };
-        if (linkedOutputs.length) {
-          const value = event.new_value;
-          event.new_value = {
-            value,
-            output_target_ids: linkedOutputs
-          };
-        }
+        const inputValue = readInputValue(element);
+        event.new_value = linkedInputs.length || linkedOutputs.length
+          ? {
+              value: inputValue,
+              input_values: linkedInputs.length ? readLinkedInputs(root, linkedInputs) : {},
+              output_target_ids: linkedOutputs
+            }
+          : inputValue;
         sendEvent(event).catch(error => feedback(error.message));
       });
     }
