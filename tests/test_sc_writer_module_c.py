@@ -51,6 +51,65 @@ class ScWriterIntegrationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(writer.calls[0]["component_id"], "hints_panel")
         self.assertEqual(writer.calls[0]["new_value"], True)
 
+    async def test_runtime_failure_rolls_back_successful_sc_dual_write(self):
+        class StatefulWriter:
+            def __init__(self):
+                self.value = False
+                self.calls = []
+
+            async def apply(self, **kwargs):
+                self.calls.append(kwargs)
+                if self.value != kwargs["expected"]:
+                    return WriteResult(False, 0, "old_value_mismatch", 1)
+                self.value = kwargs["new_value"]
+                return WriteResult(True, len(self.calls), None, 1)
+
+        class FailingOnceRuntime(MemoryRuntime):
+            def __init__(self):
+                super().__init__()
+                self.calls = 0
+
+            async def activate(self, interface_id, model):
+                self.calls += 1
+                if self.calls == 1:
+                    raise RuntimeError("renderer unavailable")
+                await super().activate(interface_id, model)
+
+        repo = MemoryRepository()
+        repo.register("python_tutor_model", tutor_model())
+        writer = StatefulWriter()
+        runtime = FailingOnceRuntime()
+        c = ModuleC(repo, runtime, sc_writer=writer)
+        current = await c.state("python_tutor_model")
+        version, _ = current
+        cmd = CommandBtoC(
+            request_id="r-sc-rollback",
+            interface_id="python_tutor_model",
+            user_id="u1",
+            base_version_id=version,
+            target_element_id="hints_panel",
+            property="visible",
+            old_value=False,
+            new_value=True,
+            rule_id="R_hint_after_2_errors",
+            reason="test",
+            constraints=["не изменять code_editor.content", "не изменять этап задания", "не изменять критерии проверки"],
+        )
+
+        resp = await c.apply(cmd)
+
+        self.assertEqual(resp.status, "failed")
+        self.assertFalse(resp.recovery_required)
+        self.assertEqual(writer.value, False)
+        self.assertEqual(len(writer.calls), 2)
+        self.assertEqual(writer.calls[1]["expected"], True)
+        self.assertEqual(writer.calls[1]["new_value"], False)
+        restored = await c.state("python_tutor_model")
+        self.assertEqual(restored[0], version)
+        self.assertFalse(
+            next(x for x in restored[1]["components"] if x["id"] == "hints_panel")["props"]["visible"]
+        )
+
     async def test_sc_write_failure_rejects(self):
         repo = MemoryRepository()
         repo.register("python_tutor_model", tutor_model())
