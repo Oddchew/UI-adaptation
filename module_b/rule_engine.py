@@ -151,6 +151,8 @@ def rule_matches(pkg: PackageAtoB, rule: AdaptationRule) -> bool:
     if not _compare(value, float(rule.trigger.threshold), rule.trigger.op):
         return False
     if rule.action.target_element_id == "$output_target":
+        if not rule.trigger.action_id:
+            return False
         matching = [
             event for event in pkg.interaction_events
             if event.action_id == rule.trigger.action_id
