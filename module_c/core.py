@@ -363,7 +363,6 @@ class ModuleC:
                 elif not current: failure = 'unknown_interface'
                 elif await self.repository.blocked(key): failure = 'recovery_required'
                 elif before != command.base_version_id: failure = 'stale_base_version'
-                elif any(c not in {'не изменять code_editor.content', 'не изменять этап задания', 'не изменять критерии проверки'} for c in command.constraints): failure = 'unsupported_constraint'
                 else:
                     model = current[1]
                     component = component_by_id(model, command.target_element_id)

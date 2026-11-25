@@ -71,3 +71,86 @@ cd ~/Sundries/ostis/ostis-example-app
 ```
 
 Там можно смотреть KB; события адаптации идут через UI на :8765, не через sc-web.
+
+
+## Универсальный SC UI runtime
+
+При `MODULE_C_USE_SC=1` сервер не регистрирует демонстрационную модель `python_tutor_model`.
+Интерфейс загружается лениво из SC по его `interface_id` при первом запросе:
+
+```bash
+MODULE_C_USE_SC=1 \
+MODULE_C_ALLOW_SHARED_SESSION_MODEL=1 \
+PYTHONPATH=. python3 integration/server.py
+```
+
+Откройте интерфейс, передав его идентификатор из `nrel_ui_id`:
+
+```
+http://127.0.0.1:8765/?interface_id=<interface_id>
+```
+
+API состояния также требует этот идентификатор:
+`GET /api/ui-state?interface_id=<interface_id>`.
+Ответ содержит полный снимок `model` (components, props, links), а не только demo-представление.
+События `POST /api/event` в SC-режиме должны содержать тот же `interface_id`.
+
+В SC-режиме демонстрационные правила Python Lab автоматически не загружаются.
+Для адаптации задайте `ADAPTATION_RULES` с правилами, предназначенными для соответствующего набора интерфейсов.
+Если правила не заданы, Module B безопасно не формирует автоматические команды.
+
+
+### Поддержка компонентов в браузерном runtime
+
+Runtime строит DOM по `components` и связям `contains`, без привязки к Python Lab:
+- `text`, `divider`, `spacer`, `window`, `scroll`, `menu`, `menu_bar`, `list`;
+- `button`, `menu_item`, `text_field`, `text_area`, `slider`, `select`;
+- `image` и `sound`.
+
+Для `image`/`sound` поле `text_value` трактуется как URL или относительный путь, если оно начинается с `http://`, `https://`, `/`, `./` или `../`. Если в нём находится SC ID ресурса, runtime показывает нейтральную заглушку с этим ID: разрешение SC ID в файл требует отдельного resource resolver и здесь не имитируется.
+
+Для `select` варианты могут быть дочерними `menu_item` или `text` через `contains`. При выборе отправляется `successful_action` с `action_id`; выбранное значение и значения связанных через `input_target` полей передаются в `new_value` события.
+
+Связи `input_target` читаются от action-компонента к полям ввода. При нажатии на `button`/`menu_item` текущие значения связанных полей передаются в событии как `property: "input_values"` и `new_value: {component_id: value}`. Связи `output_target` сохраняются в DOM как `data-output-targets`; выполнение прикладного действия и запись его результата в целевые компоненты пока остаются ответственностью отдельного action handler.
+
+### События интерактивных SC-компонентов
+
+Универсальный renderer отправляет события без изменения SC-модели содержимого:
+
+- `focus` / `blur` — фокус и потеря фокуса текстовым полем, областью, ползунком или списком выбора.
+- `successful_action` с `property: "input_value"` — изменение значения поля, области, ползунка или списка выбора; `new_value` содержит новое значение.
+- `successful_action` с `property: "action_context"` — нажатие кнопки/пункта меню, связанного с `input_target` и/или `output_target`.
+
+Для действия с входными/выходными связями `new_value` имеет структуру:
+
+```json
+{
+  "input_values": {"component_id": "current value"},
+  "output_target_ids": ["component_id"]
+}
+```
+
+Для изменения связанного элемента `new_value` содержит его `value`, текущие `input_values` и `output_target_ids`.
+Эти данные фиксируют контекст взаимодействия для Module A; сами по себе они не меняют `text_value`, `action_id` или другие свойства SC-модели.
+### Декларативные действия через output_target
+
+Кнопка/пункт меню с `action_id` отправляет `successful_action`. Module A передаёт такой пакет в Module B сразу, не ожидая накопления статистики. Для правила можно задать `trigger.action_id`, а в `action.target_element_id` использовать `$output_target`:
+
+```json
+{
+  "id": "save_calendar_rule",
+  "trigger": {
+    "kind": "success_count",
+    "threshold": 1,
+    "action_id": "save_calendar"
+  },
+  "action": {
+    "target_element_id": "$output_target",
+    "property": "visible",
+    "old_value": false,
+    "new_value": true
+  }
+}
+```
+
+`$output_target` разрешается только при наличии ровно одной `nrel_ui_output_target` связи у компонента, отправившего действие. При отсутствии связи или нескольких выходных целях правило не срабатывает. После разрешения цели команда проходит обычные проверки Module C: наличие компонента/свойства, whitelist, старое значение, версия модели и подтверждение renderer. Изменение `text_value` и `action_id` по-прежнему запрещено.

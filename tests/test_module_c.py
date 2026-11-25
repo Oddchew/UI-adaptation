@@ -78,18 +78,21 @@ class ModuleCTests(unittest.IsolatedAsyncioTestCase):
         cfg = ModuleAConfig(COLD_START_THRESHOLD=2, PERIODIC_SNAPSHOT_MS=0)
         a = ModuleA(InMemoryStorage(cfg), cfg)
         b = ModuleB()
-        b.set_version_provider(self.c.active_version)
-        b.set_command_handler(self.c.apply)
-        self.c.set_application_handler(a.handle_application_result)
+        demo_repo = MemoryRepository()
+        demo_repo.register('python_tutor_model', default_model())
+        demo_c = ModuleC(demo_repo, MemoryRuntime())
+        b.set_version_provider(demo_c.active_version)
+        b.set_command_handler(demo_c.apply)
+        demo_c.set_application_handler(a.handle_application_result)
         a.set_package_handler(b.handle_package)
         def event(id, kind, element):
-            return InteractionEvent(id=id, user_id='u', interface_id='ui', session_id='s',
+            return InteractionEvent(id=id, user_id='u', interface_id='python_tutor_model', session_id='s',
                 event_type=kind, timestamp=datetime.now(timezone.utc).isoformat(), element_id=element)
         for i in range(3):
             await a.handle_event(event(str(i), EventType.HELP_REQUEST, 'hints_panel'))
-        self.assertFalse(component_by_id((await self.c.state('ui', 'u', 's'))[1], 'history_content')['props']['visible'])
+        self.assertFalse(component_by_id((await demo_c.state('python_tutor_model', 'u', 's'))[1], 'history_content')['props']['visible'])
         await a.handle_event(event('open', EventType.BLOCK_OPEN, 'history_content'))
-        self.assertTrue(component_by_id((await self.c.state('ui', 'u', 's'))[1], 'history_content')['props']['visible'])
+        self.assertTrue(component_by_id((await demo_c.state('python_tutor_model', 'u', 's'))[1], 'history_content')['props']['visible'])
         a.dispose()
 
     async def test_manual_mode_blocks_automatic_adaptation_per_session(self):
@@ -155,26 +158,29 @@ class ModuleCTests(unittest.IsolatedAsyncioTestCase):
         cfg = ModuleAConfig(COLD_START_THRESHOLD=2, PERIODIC_SNAPSHOT_MS=0)
         a = ModuleA(InMemoryStorage(cfg), cfg)
         b = ModuleB()
-        b.set_version_provider(self.c.active_version)
-        b.set_command_handler(self.c.apply)
-        self.c.set_application_handler(a.handle_application_result)
+        demo_repo = MemoryRepository()
+        demo_repo.register('python_tutor_model', default_model())
+        demo_c = ModuleC(demo_repo, MemoryRuntime())
+        b.set_version_provider(demo_c.active_version)
+        b.set_command_handler(demo_c.apply)
+        demo_c.set_application_handler(a.handle_application_result)
         a.set_package_handler(b.handle_package)
         def event(id, kind, session='s'):
-            return InteractionEvent(id=id, user_id='u', interface_id='ui', session_id=session,
+            return InteractionEvent(id=id, user_id='u', interface_id='python_tutor_model', session_id=session,
                 event_type=kind, timestamp=datetime.now(timezone.utc).isoformat(),
                 element_id='code_editor' if kind == EventType.ERROR else 'hints_panel',
                 error_code='syntax' if kind == EventType.ERROR else None)
         await a.handle_event(event('1', EventType.ERROR))
         await a.handle_event(event('2', EventType.ERROR))
-        self.assertTrue(component_by_id((await self.c.state('ui', 'u', 's'))[1], 'hints_panel')['props']['visible'])
+        self.assertTrue(component_by_id((await demo_c.state('python_tutor_model', 'u', 's'))[1], 'hints_panel')['props']['visible'])
         await a.handle_event(event('3', EventType.HINT_HIDE))
-        self.assertFalse(component_by_id((await self.c.state('ui', 'u', 's'))[1], 'hints_panel')['props']['visible'])
+        self.assertFalse(component_by_id((await demo_c.state('python_tutor_model', 'u', 's'))[1], 'hints_panel')['props']['visible'])
         await a.handle_event(event('4', EventType.ERROR))
-        self.assertFalse(component_by_id((await self.c.state('ui', 'u', 's'))[1], 'hints_panel')['props']['visible'])
+        self.assertFalse(component_by_id((await demo_c.state('python_tutor_model', 'u', 's'))[1], 'hints_panel')['props']['visible'])
         self.assertEqual(len((await a.get_user_model('u')).adaptation_history), 2)
         await a.handle_event(event('5', EventType.ERROR, 'next'))
         await a.handle_event(event('6', EventType.ERROR, 'next'))
-        self.assertTrue(component_by_id((await self.c.state('ui', 'u', 'next'))[1], 'hints_panel')['props']['visible'])
+        self.assertTrue(component_by_id((await demo_c.state('python_tutor_model', 'u', 'next'))[1], 'hints_panel')['props']['visible'])
         a.dispose()
 
 

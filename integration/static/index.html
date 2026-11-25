@@ -4,55 +4,70 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="color-scheme" content="light dark" />
-  <title>Python Lab — адаптивный учебный интерфейс</title>
+  <meta name="description" content="Универсальная среда отображения и адаптации SC UI-интерфейсов." />
+  <title>SC UI Runtime</title>
   <link rel="stylesheet" href="/style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><span class="brand-mark">p<span>y</span></span><div><strong>python<span>lab</span></strong><small>адаптивный интерфейс</small></div></div>
-    <div class="header-right"><span class="header-caption">ДЕМОНСТРАЦИОННЫЙ СТЕНД</span><span id="health" class="connection"><i></i> Подключение</span></div>
+  <header class="runtime-header">
+    <a class="brand" href="/" aria-label="SC UI Runtime — главная">
+      <span class="brand-mark">SC</span>
+      <span><strong>SC UI Runtime</strong><small>Среда адаптивных интерфейсов</small></span>
+    </a>
+    <div class="header-status">
+      <span class="interface-id" id="interface-id">interface_id: —</span>
+      <span id="health" class="connection"><i></i> Подключение</span>
+    </div>
   </header>
 
-  <main class="page">
-    <div class="breadcrumb"><span>УЧЕБНЫЙ АССИСТЕНТ</span><span class="slash">/</span><span>ОСНОВЫ PYTHON</span></div>
-    <div class="page-heading"><div><div class="eyebrow"><span class="pulse"></span> ПРАКТИЧЕСКОЕ ЗАДАНИЕ <span class="heading-number">01 / 01</span></div><h1>Первый шаг в Python<span>.</span></h1><p>Небольшое задание и интерфейс, который реагирует на вашу работу.</p></div><div class="heading-aside"><span>ВАША СЕССИЯ</span><strong>Учебный режим <i>↗</i></strong><small>Рабочее пространство</small></div></div>
-
-    <div class="workspace">
-      <div class="main-column">
-        <section class="task-card" id="task_panel" aria-labelledby="task-title">
-          <div class="task-top"><div class="section-kicker"><span class="square-icon">✳</span> ЗАДАНИЕ 01</div><span class="task-tag">ВЫВОД ДАННЫХ</span></div>
-          <h2 id="task-title">Скажите привет!</h2>
-          <p>Напишите программу, которая выводит на экран строку <code>Привет, мир!</code></p>
-          <div class="task-example"><span>ОЖИДАЕМЫЙ РЕЗУЛЬТАТ</span><code>Привет, мир!</code><span class="example-check">✓</span></div>
-        </section>
-
-        <section class="editor-card" aria-labelledby="editor-title">
-          <div class="editor-header"><div><span class="editor-dot"></span><strong id="editor-title">Редактор кода</strong><span class="editor-file">solution.py</span></div><span class="editor-language"><span>●</span> PYTHON</span></div>
-          <form id="demo-form">
-            <div class="code-area"><div class="line-numbers" aria-hidden="true">01<br>02<br>03<br>04<br>05<br>06</div><label class="sr-only" for="code_editor">Ваш код Python</label><textarea id="code_editor" spellcheck="false" aria-describedby="editor-note">print("Привет, мир!")</textarea></div>
-            <div class="editor-footer"><span id="editor-note"><span class="spark">✦</span> Код сохраняется при изменении интерфейса</span><button class="button primary" type="submit"><span>▶</span> Проверить решение</button></div>
-          </form>
-        </section>
-
-        <section id="hints_panel" class="help-card" hidden aria-live="polite"><div class="help-icon">✦</div><div class="help-copy"><div class="help-label">ПОМОЩЬ РЯДОМ</div><h3>Небольшая подсказка</h3><p>Функция <code>print()</code> выводит текст на экран. Проверьте кавычки, скобки и текст внутри них.</p><button type="button" id="hide-hint" class="text-button">Скрыть подсказку <span>↗</span></button></div><span class="help-badge">АДАПТАЦИЯ</span></section>
-
-        <section class="activity-card" id="history_panel"><div class="activity-header"><div><div class="small-kicker">ВАША РАБОТА</div><h2>История попыток</h2></div><span id="history-status" class="history-status">В этом сеансе</span></div><div id="history_content"><div class="history-empty" id="history-empty"><span>↳</span><p>Здесь появятся действия в текущем сеансе.</p></div><ol id="history-list" class="history-list" aria-live="polite"></ol></div><div id="history-collapsed" class="collapsed-note" hidden>История свёрнута после обращений за помощью. Записи сохранены. <button type="button" id="open-history" class="text-button">Развернуть историю ↗</button></div></section>
+  <main class="runtime-page">
+    <section class="page-heading">
+      <div>
+        <div class="eyebrow">SC-ИНТЕРФЕЙС <span class="heading-dot"></span> RUNTIME</div>
+        <h1 id="interface-title">Загрузка интерфейса…</h1>
+        <p id="interface-description">Отображение интерфейса на основе SC-модели.</p>
       </div>
+      <div class="heading-meta">
+        <span>АКТИВНАЯ ВЕРСИЯ</span>
+        <code id="ui-version">—</code>
+      </div>
+    </section>
 
-      <aside class="sidebar" aria-label="Наблюдение за адаптацией">
-        <section class="insight-card"><div class="insight-top"><div><div class="small-kicker">КОНТУР АДАПТАЦИИ</div><h2>Интерфейс в действии</h2></div><span class="insight-icon">✺</span></div><p class="insight-intro">Посмотрите, как действия пользователя приводят к изменению интерфейса.</p>
-          <div class="pipeline"><div class="pipeline-step"><span class="step-letter a">A</span><div><strong>Наблюдает</strong><small>События и модель пользователя</small></div><span class="step-indicator"></span></div><div class="pipeline-line"></div><div class="pipeline-step"><span class="step-letter b">B</span><div><strong>Принимает решение</strong><small>Правила и выбор изменения</small></div><span class="step-indicator"></span></div><div class="pipeline-line"></div><div class="pipeline-step"><span class="step-letter c">C</span><div><strong>Применяет</strong><small>Версия и состояние интерфейса</small></div><span class="step-indicator"></span></div></div>
-          <div class="stats"><div><span>СОБЫТИЯ В A</span><strong id="stat-events">—</strong></div><div><span>ОШИБКИ В A</span><strong id="stat-errors">—</strong></div><div><span>ПОДСКАЗКА</span><strong id="stat-hint">—</strong></div></div>
-          <div class="version-row"><span>АКТИВНАЯ ВЕРСИЯ UI</span><code id="ui-version">—</code></div>
-        </section>
+    <section class="workspace" aria-label="Рабочая область интерфейса">
+      <div class="workspace-toolbar">
+        <div><span class="status-indicator"></span><strong>Рабочая область</strong><span class="toolbar-caption">Содержимое формируется из SC-модели</span></div>
+        <button type="button" id="btn-refresh" class="toolbar-button">Обновить модель</button>
+      </div>
+      <div class="interface-viewport">
+        <div id="interface-root" class="sc-interface-root" aria-live="polite"></div>
+      </div>
+      <div id="empty-state" class="empty-state" hidden>
+        <strong>Интерфейс не содержит компонентов</strong>
+        <span>Проверьте SC-модель и связи компонентов.</span>
+      </div>
+    </section>
 
-        <section class="demo-card"><div class="small-kicker">ПОПРОБУЙТЕ САМИ</div><h2>Посмотреть адаптацию</h2><p>Дважды смоделируйте ошибку одного типа. Система предложит подсказку, которую можно скрыть.</p><button type="button" id="btn-error" class="button error-button"><span>↯</span> Смоделировать ошибку</button><button type="button" id="btn-help" class="button secondary-button"><span>?</span> Запросить помощь</button><div class="demo-footnote"><span>i</span> Проверка решения и ошибки в этом демо имитируются.</div></section>
+    <details class="debug-card">
+      <summary><span>Технические данные</span><span class="chevron">⌄</span></summary>
+      <div class="debug-body">
+        <div class="debug-column"><label>SC UI-МОДЕЛЬ</label><pre id="ui-view">—</pre></div>
+        <div class="debug-column"><label>МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ · MODULE A</label><pre id="model-view">—</pre></div>
+        <div class="debug-column"><label>ПАКЕТЫ АДАПТАЦИИ · A → B</label><pre id="pkg-view">[]</pre></div>
+        <div class="debug-actions"><button type="button" id="btn-reset-b">Сбросить ограничение повторов B</button></div>
+      </div>
+    </details>
 
-        <details class="debug-card"><summary><span><span class="debug-icon">⌘</span> Технические данные</span><span class="chevron">⌄</span></summary><div class="debug-body"><label>МОДЕЛЬ ПОЛЬЗОВАТЕЛЯ · A</label><pre id="model-view">—</pre><label>СОСТОЯНИЕ ИНТЕРФЕЙСА · C</label><pre id="ui-view">—</pre><label>ПАКЕТЫ · A → B</label><pre id="pkg-view">[]</pre><div class="debug-actions"><button type="button" id="btn-refresh">Обновить</button><button type="button" id="btn-reset-b">Сбросить повтор B</button></div></div></details>
-      </aside>
-    </div>
-    <footer><span>PYTHON LAB <b>·</b> АДАПТИВНЫЙ УЧЕБНЫЙ ИНТЕРФЕЙС</span><label>Оформление <select id="theme" aria-label="Тема оформления"><option value="light">Светлое</option><option value="dark">Тёмное</option></select></label></footer>
+    <footer>
+      <span>SC UI RUNTIME <b>·</b> УНИВЕРСАЛЬНЫЙ РЕНДЕРЕР</span>
+      <label for="theme">Тема
+        <select id="theme" aria-label="Тема оформления">
+          <option value="light">Светлая</option>
+          <option value="dark">Тёмная</option>
+        </select>
+      </label>
+    </footer>
   </main>
+
   <div class="toast" id="feedback" role="status" aria-live="polite" hidden></div>
   <script src="/app.js"></script>
 </body>

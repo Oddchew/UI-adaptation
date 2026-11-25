@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import inspect
+import os
 import time
 import uuid
 from pathlib import Path
@@ -48,7 +49,7 @@ def _load_rules(source: RulesSource) -> list[AdaptationRule]:
             data = data["rules"]
         return rules_from_jsonable(list(data))
     if not source:
-        return list(DEFAULT_RULES)
+        return []
     first = source[0]
     if isinstance(first, AdaptationRule):
         return list(source)  # type: ignore[arg-type]
@@ -104,11 +105,33 @@ class ModuleB:
 
     async def handle_package(self, pkg: PackageAtoB) -> Optional[CommandBtoC]:
         result = await self.decide(pkg)
+        if os.environ.get("UI_RUNTIME_DEBUG") == "1":
+            last = pkg.interaction_events[-1] if pkg.interaction_events else None
+            print(
+                "[debug][B]",
+                "interface=", pkg.interface_id,
+                "events=", len(pkg.interaction_events),
+                "last_action=", getattr(last, "action_id", None),
+                "last_targets=", getattr(last, "new_value", None),
+                "status=", result.status,
+                "reject=", result.reject_message,
+                "command=", result.command,
+                flush=True,
+            )
         if result.status == DecisionStatus.COMMAND and result.command is not None:
             if self._on_command is not None:
                 out = self._on_command(result.command)
                 if inspect.isawaitable(out):
                     out = await out
+                if os.environ.get("UI_RUNTIME_DEBUG") == "1":
+                    print(
+                        "[debug][C]",
+                        "status=", getattr(out, 'status', None),
+                        "failure=", getattr(out, 'failure_reason', None),
+                        "target=", result.command.target_element_id,
+                        "property=", result.command.property,
+                        flush=True,
+                    )
                 if getattr(out, 'status', None) == 'applied' or getattr(out, 'success', False):
                     session = (pkg.interaction_events[-1].session_id or 'default') if pkg.interaction_events else 'default'
                     self._applied.add(self._key(pkg.user_id, result.command.rule_id, session, pkg.interface_id))
@@ -131,13 +154,14 @@ class ModuleB:
             version = await version
         if not version:
             return DecisionResult(status=DecisionStatus.REJECTED, reject_reason=RejectReason.INSUFFICIENT_DATA, reject_message='активная версия интерфейса недоступна')
-        if last and last.event_type.value == 'hint_hide':
+        # Backward-compatible controls for the original Python Lab demo only.
+        if pkg.interface_id == 'python_tutor_model' and last and last.event_type.value == 'hint_hide':
             return DecisionResult(status=DecisionStatus.COMMAND, command=CommandBtoC(
                 request_id=f'req_{uuid.uuid4().hex}', interface_id=pkg.interface_id,
                 user_id=pkg.user_id, base_version_id=version, target_element_id='hints_panel',
                 property='visible', old_value=True, new_value=False, reason='пользователь скрыл подсказку',
                 rule_id='user_hide_hint', source_event_ids=[last.id], created_at=_now_iso(), session_id=session_id))
-        if last and last.event_type.value == 'block_open' and last.element_id == 'history_content':
+        if pkg.interface_id == 'python_tutor_model' and last and last.event_type.value == 'block_open' and last.element_id == 'history_content':
             return DecisionResult(status=DecisionStatus.COMMAND, command=CommandBtoC(
                 request_id=f'req_{uuid.uuid4().hex}', interface_id=pkg.interface_id,
                 user_id=pkg.user_id, base_version_id=version, target_element_id='history_content',
@@ -151,17 +175,22 @@ class ModuleB:
                 reject_message="ручной режим / manual_override — авто-команды запрещены",
             )
 
+        explicit_action = bool(
+            last
+            and last.event_type.value == 'successful_action'
+            and last.action_id
+        )
         n_events = len(pkg.interaction_events)
         if n_events == 0:
             n_events = int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
-        if n_events < cfg.MIN_EVENTS_IN_WINDOW:
+        if not explicit_action and n_events < cfg.MIN_EVENTS_IN_WINDOW:
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.INSUFFICIENT_DATA,
                 reject_message=f"событий в окне {n_events} < {cfg.MIN_EVENTS_IN_WINDOW}",
             )
 
-        if pkg.model_snapshot.is_cold_start and n_events < 2:
+        if not explicit_action and pkg.model_snapshot.is_cold_start and n_events < 2:
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.COLD_START,
@@ -173,7 +202,7 @@ class ModuleB:
         if last:
             scoped.interaction_events = [e for e in pkg.interaction_events if e.interface_id == pkg.interface_id and e.session_id == last.session_id]
         matches = evaluate_declarative_rules(scoped, self._rules)
-        if last and session_key(pkg.interface_id, last.session_id) in pkg.model_snapshot.hint_hidden_sessions:
+        if pkg.interface_id == 'python_tutor_model' and last and session_key(pkg.interface_id, last.session_id) in pkg.model_snapshot.hint_hidden_sessions:
             matches = [m for m in matches if m.target_element_id != 'hints_panel']
         if cfg.ANTI_FLICKER:
             session = (last.session_id or 'default') if last else 'default'
@@ -193,11 +222,7 @@ class ModuleB:
                 reject_message="после стратегии минимального вмешательства пусто",
             )
 
-        constraints = list(chosen.constraints) or [
-            "не изменять code_editor.content",
-            "не изменять этап задания",
-            "не изменять критерии проверки",
-        ]
+        constraints = list(chosen.constraints)
 
         cmd = CommandBtoC(
             request_id=f"req_{uuid.uuid4().hex[:10]}",
@@ -217,7 +242,7 @@ class ModuleB:
             session_id=session_id,
         )
 
-        if is_forbidden_target(cmd.target_element_id, cfg):
+        if pkg.interface_id == 'python_tutor_model' and is_forbidden_target(cmd.target_element_id, cfg):
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.CONSTRAINT_VIOLATION,

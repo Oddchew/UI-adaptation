@@ -42,6 +42,8 @@ from module_a import (  # noqa: E402
 )
 from module_b import ModuleB  # noqa: E402 — реальный модуль B, не заглушка
 from module_c import ModuleC, SQLiteRepository, default_model, display_state
+from module_c.model import AdaptationPolicy
+from module_c.catalog import ADAPTABLE_PROPERTIES
 
 STATIC = Path(__file__).resolve().parent / "static"
 PORT = int(os.environ.get("MODULE_A_PORT", "8765"))
@@ -61,6 +63,7 @@ _runtime = None
 _packages: list[dict[str, Any]] = []
 _ready = False
 _sc_ok = False
+_sc_c_ok = False
 
 
 class BrowserRuntime:
@@ -71,6 +74,15 @@ class BrowserRuntime:
         token = uuid.uuid4().hex
         future = asyncio.get_running_loop().create_future()
         self.pending[token] = (interface_id, model, future, user_id, session_id)
+        if os.environ.get("UI_RUNTIME_DEBUG") == "1":
+            print(
+                "[debug][RUNTIME] activate",
+                "token=", token,
+                "interface=", interface_id,
+                "user=", user_id,
+                "session=", session_id,
+                flush=True,
+            )
         try:
             if not await future:
                 raise RuntimeError('browser rejected update')
@@ -78,11 +90,32 @@ class BrowserRuntime:
             self.pending.pop(token, None)
 
     def commands(self, user_id, session_id):
-        return [{'token': token, 'interface_id': item[0], 'model': display_state(item[1])}
-                for token, item in self.pending.items() if item[3] == user_id and item[4] == session_id]
+        result = [
+            {'token': token, 'interface_id': item[0], 'model': item[1]}
+            for token, item in self.pending.items()
+            if item[3] == user_id and item[4] == session_id
+        ]
+        if self.pending and os.environ.get("UI_RUNTIME_DEBUG") == "1":
+            print(
+                "[debug][RUNTIME] poll",
+                "user=", user_id,
+                "session=", session_id,
+                "pending=", len(self.pending),
+                "matched=", len(result),
+                flush=True,
+            )
+        return result
 
     def acknowledge(self, token, success):
         item = self.pending.get(token)
+        if os.environ.get("UI_RUNTIME_DEBUG") == "1":
+            print(
+                "[debug][RUNTIME] ack",
+                "token=", token,
+                "success=", success,
+                "found=", item is not None,
+                flush=True,
+            )
         if item and not item[2].done():
             item[2].set_result(success)
 
@@ -98,7 +131,7 @@ def _run(coro):
 
 
 async def _bootstrap() -> None:
-    global _module_a, _module_b, _module_c, _ready, _sc_ok, _runtime, _repository
+    global _module_a, _module_b, _module_c, _ready, _sc_ok, _sc_c_ok, _runtime, _repository
 
     cfg = ModuleAConfig(
         COLD_START_THRESHOLD=2,
@@ -123,16 +156,20 @@ async def _bootstrap() -> None:
     rules_src = RULES_PATH if RULES_PATH else None
     if rules_src:
         print(f"[module-b] rules file: {rules_src}")
-    else:
+    elif not USE_SC_C:
         default_json = ROOT / "module_b" / "rules_default.json"
         if default_json.is_file():
             rules_src = str(default_json)
             print(f"[module-b] rules file: {rules_src}")
         else:
             print("[module-b] built-in DEFAULT_RULES")
-    _module_b = ModuleB(rules=rules_src)
+    else:
+        print("[module-b] no generic rules configured; set ADAPTATION_RULES")
+    _module_b = ModuleB(rules=rules_src if rules_src else ([] if USE_SC_C else None))
     _repository = SQLiteRepository(os.environ.get('MODULE_C_DB', str(ROOT / 'module_c.sqlite3')))
-    if not await _repository.current('python_tutor_model'):
+    # The SC-backed path discovers each interface by interface_id on demand.
+    # The Python tutor seed is retained only for the standalone legacy demo.
+    if not USE_SC_C and not await _repository.current('python_tutor_model'):
         _repository.register('python_tutor_model', default_model())
     browser = BrowserRuntime()
     _runtime = browser
@@ -143,6 +180,7 @@ async def _bootstrap() -> None:
             from module_c.sc_writer import ExclusiveScWriter
             adapter = ScUiModelAdapter(SC_WS, exclusive_writer=True)
             await adapter.connect()
+            _sc_c_ok = True
             sc_writer = ExclusiveScWriter(adapter)
             # SC is source of truth for property values; browser confirms screen.
             _runtime = ScModelRuntime(
@@ -153,6 +191,7 @@ async def _bootstrap() -> None:
             )
             print(f"[module-c] SC writer enabled ({SC_WS})")
         except Exception as exc:
+            _sc_c_ok = False
             print(f"[module-c] MODULE_C_USE_SC failed, falling back to browser only: {exc}")
             sc_writer = None
             _runtime = browser
@@ -162,6 +201,7 @@ async def _bootstrap() -> None:
     _module_c = ModuleC(
         _repository,
         _runtime,
+        timeout=float(os.environ.get("MODULE_C_TIMEOUT", "5.0" if USE_SC_C else "2.0")),
         sc_writer=None if USE_SC_C and sc_writer is not None else sc_writer,
     )
     _module_b.set_version_provider(_module_c.active_version)
@@ -220,6 +260,29 @@ def _start_async_loop() -> None:
         time.sleep(0.05)
 
 
+async def _ensure_interface(interface_id: str) -> None:
+    """Lazily import an interface snapshot from SC into Module C's version store."""
+    if not isinstance(interface_id, str) or not interface_id.strip():
+        raise ValueError("interface_id_required")
+    if _repository is None:
+        raise RuntimeError("repository_not_ready")
+    current = await _repository.current(interface_id)
+    if current:
+        model = current[1]
+    else:
+        adapter = getattr(_runtime, "model_adapter", None) if USE_SC_C else None
+        if adapter is None:
+            raise KeyError(f"unknown interface: {interface_id}")
+        model = await adapter.read_model(interface_id)
+        _repository.register(interface_id, model)
+    # Every component from the SC model receives the catalog's safe property
+    # allow-list. Component IDs are scoped by interface at command validation.
+    allowed = dict(_module_c.policy.allowed)
+    for component in model["components"]:
+        allowed[component["id"]] = set(ADAPTABLE_PROPERTIES)
+    _module_c.policy = AdaptationPolicy(allowed)
+
+
 def _json_response(handler: BaseHTTPRequestHandler, code: int, payload: Any) -> None:
     body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
     handler.send_response(code)
@@ -272,6 +335,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": _ready,
                     "sc": _sc_ok,
+                    "sc_c": _sc_c_ok,
                     "use_sc": USE_SC,
                     "use_sc_c": USE_SC_C,
                     "allow_shared_session_model": USE_SC_SHARED_SESSION_MODEL,
@@ -283,8 +347,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/ui-state":
             assert _module_c is not None
             query = parse_qs(parsed.query)
-            current = _run(_module_c.state('python_tutor_model', query.get('user_id', [None])[0], query.get('session_id', [None])[0]))
-            _json_response(self, 200, {"ui": display_state(current[1]), "version": current[0], "packages": _packages[-10:]})
+            interface_id = query.get('interface_id', [None])[0]
+            if not interface_id and not USE_SC_C:
+                interface_id = 'python_tutor_model'
+            try:
+                _run(_ensure_interface(interface_id))
+                current = _run(_module_c.state(interface_id, query.get('user_id', [None])[0], query.get('session_id', [None])[0]))
+                if current is None:
+                    raise KeyError(f"unknown interface: {interface_id}")
+                _json_response(self, 200, {
+                    "interface_id": interface_id,
+                    "model": current[1],
+                    "ui": display_state(current[1]),
+                    "version": current[0],
+                    "packages": _packages[-10:],
+                })
+            except (ValueError, KeyError) as exc:
+                _json_response(self, 404, {"error": str(exc)})
+            except Exception as exc:
+                _json_response(self, 502, {"error": str(exc)})
             return
 
         if path == '/api/runtime/pending':
@@ -364,7 +445,7 @@ class Handler(BaseHTTPRequestHandler):
             event = InteractionEvent(
                 id=data.get("id") or f"e_{uuid.uuid4().hex[:8]}",
                 user_id=data.get("user_id") or "user_demo",
-                interface_id=data.get("interface_id") or "ui_demo",
+                interface_id=data.get("interface_id") or (None if USE_SC_C else "python_tutor_model"),
                 timestamp=data.get("timestamp") or _now(),
                 event_type=et,
                 session_id=data.get('session_id'),
@@ -377,6 +458,18 @@ class Handler(BaseHTTPRequestHandler):
                 new_value=data.get("new_value"),
                 action_id=data.get("action_id"),
             )
+
+            if not event.interface_id:
+                _json_response(self, 400, {"error": "interface_id_required"})
+                return
+            try:
+                _run(_ensure_interface(event.interface_id))
+            except (ValueError, KeyError) as exc:
+                _json_response(self, 404, {"error": str(exc)})
+                return
+            except Exception as exc:
+                _json_response(self, 502, {"error": str(exc)})
+                return
 
             async def handle():
                 await _module_a.handle_event(event)

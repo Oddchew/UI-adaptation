@@ -1,0 +1,16 @@
+[
+  {
+    "id": "ui_action_test_show_panel",
+    "trigger": {
+      "kind": "success_count",
+      "threshold": 1,
+      "action_id": "show_status_panel"
+    },
+    "action": {
+      "target_element_id": "$output_target",
+      "property": "visible",
+      "old_value": false,
+      "new_value": true
+    }
+  }
+]
