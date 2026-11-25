@@ -4,7 +4,6 @@ const params = new URLSearchParams(location.search);
 const INTERFACE = params.get('interface_id') || 'python_tutor_model';
 const CONTEXT = `user_id=${encodeURIComponent(USER)}&session_id=${encodeURIComponent(SESSION)}&interface_id=${encodeURIComponent(INTERFACE)}`;
 const seen = new Set();
-let currentModel = null;
 let feedbackTimer;
 
 async function api(path, options = {}) {
@@ -26,12 +25,17 @@ function sendEvent(payload) {
   return api('/api/event', {
     method: 'POST',
     body: JSON.stringify({user_id: USER, interface_id: INTERFACE, session_id: SESSION, ...payload})
-  }).then(refresh);
+  }).then(async result => {
+    if (result.model) {
+      document.getElementById('model-view').textContent = JSON.stringify(result.model, null, 2);
+    }
+    document.getElementById('pkg-view').textContent = JSON.stringify(result.packages || [], null, 2);
+    return result;
+  });
 }
 
 function applyStyle(element, props) {
   if (props.visible === false) element.hidden = true;
-  if (props.enabled === false) element.setAttribute('aria-disabled', 'true');
   if (props.opacity !== undefined) element.style.opacity = String(props.opacity);
   if (props.width !== undefined) element.style.width = `${props.width}px`;
   if (props.height !== undefined) element.style.height = `${props.height}px`;
@@ -53,10 +57,13 @@ function applyStyle(element, props) {
 
 function createComponent(component) {
   const props = component.props || {};
-  const text = props.text_value || props.name || component.id;
+  const text = props.text_value ?? props.name ?? component.id;
   let element;
   switch (component.typeId) {
-    case 'text': element = document.createElement('p'); element.textContent = text; break;
+    case 'text':
+      element = document.createElement('p');
+      element.textContent = text;
+      break;
     case 'image':
       element = document.createElement('div');
       element.className = 'sc-image-placeholder';
@@ -65,29 +72,62 @@ function createComponent(component) {
       element.setAttribute('aria-label', text);
       break;
     case 'sound':
-      element = document.createElement('div'); element.textContent = text || '[sound]'; break;
-    case 'divider': element = document.createElement('hr'); break;
-    case 'spacer': element = document.createElement('div'); element.style.minHeight = '16px'; break;
+      element = document.createElement('div');
+      element.textContent = text || '[sound]';
+      element.setAttribute('aria-label', 'Звуковой компонент');
+      break;
+    case 'divider':
+      element = document.createElement('hr');
+      break;
+    case 'spacer':
+      element = document.createElement('div');
+      element.style.minHeight = '16px';
+      break;
     case 'text_field':
-      element = document.createElement('input'); element.type = 'text';
-      element.value = props.text_value || ''; element.placeholder = props.tooltip || props.name || '';
+      element = document.createElement('input');
+      element.type = 'text';
+      element.value = props.text_value || '';
+      element.placeholder = props.tooltip || props.name || '';
+      element.setAttribute('aria-label', props.name || component.id);
       break;
     case 'text_area':
-      element = document.createElement('textarea'); element.value = props.text_value || '';
-      element.rows = 4; element.setAttribute('aria-label', props.name || component.id);
+      element = document.createElement('textarea');
+      element.value = props.text_value || '';
+      element.rows = 4;
+      element.setAttribute('aria-label', props.name || component.id);
       break;
     case 'slider':
-      element = document.createElement('input'); element.type = 'range'; break;
-    case 'select': element = document.createElement('select'); break;
+      element = document.createElement('input');
+      element.type = 'range';
+      if (props.min_value !== undefined) element.min = props.min_value;
+      if (props.max_value !== undefined) element.max = props.max_value;
+      if (props.value !== undefined) element.value = props.value;
+      break;
+    case 'select':
+      element = document.createElement('select');
+      element.setAttribute('aria-label', props.name || component.id);
+      break;
     case 'button':
     case 'menu_item':
-      element = document.createElement('button'); element.type = 'button'; element.textContent = text; break;
-    case 'list': element = document.createElement('ul'); break;
+      element = document.createElement('button');
+      element.type = 'button';
+      element.textContent = text;
+      break;
+    case 'list':
+      element = document.createElement('ul');
+      break;
     case 'menu':
-    case 'menu_bar': element = document.createElement('nav'); break;
+    case 'menu_bar':
+      element = document.createElement('nav');
+      element.setAttribute('aria-label', props.name || 'Меню');
+      break;
     case 'scroll':
-    case 'window': element = document.createElement('section'); break;
-    default: element = document.createElement('div'); element.textContent = text;
+    case 'window':
+      element = document.createElement('section');
+      break;
+    default:
+      element = document.createElement('div');
+      element.textContent = text;
   }
   element.dataset.componentId = component.id;
   element.classList.add('sc-ui-component', `sc-ui-${component.typeId}`);
@@ -101,14 +141,15 @@ function renderInterface(model) {
   if (!model || !Array.isArray(model.components) || !Array.isArray(model.links)) {
     throw new Error('Сервер вернул некорректную SC UI-модель');
   }
-  currentModel = model;
+
   const root = document.getElementById('interface-root');
   root.replaceChildren();
   const byId = new Map(model.components.map(component => [component.id, component]));
   const children = new Map();
   const childIds = new Set();
+
   for (const link of model.links) {
-    if (link.kind !== 'contains') continue;
+    if (link.kind !== 'contains' || !byId.has(link.sourceId) || !byId.has(link.targetId)) continue;
     if (!children.has(link.sourceId)) children.set(link.sourceId, []);
     children.get(link.sourceId).push(link.targetId);
     childIds.add(link.targetId);
@@ -116,6 +157,7 @@ function renderInterface(model) {
   for (const ids of children.values()) {
     ids.sort((a, b) => (byId.get(a)?.props?.order ?? 0) - (byId.get(b)?.props?.order ?? 0));
   }
+
   const rendered = new Set();
   const bounds = model.components.reduce((size, component) => {
     const props = component.props || {};
@@ -124,47 +166,46 @@ function renderInterface(model) {
       height: Math.max(size.height, (props.y || 0) + (props.height || 0))
     };
   }, {width: 0, height: 0});
-  root.style.position = 'relative';
-  root.style.display = 'block';
-  root.style.padding = '0';
+
   root.style.width = `${Math.max(bounds.width + 16, 320)}px`;
   root.style.height = `${Math.max(bounds.height + 16, 180)}px`;
+
   function mount(id, parent, parentOrigin = {x: 0, y: 0}) {
     const component = byId.get(id);
     if (!component || rendered.has(id)) return;
     rendered.add(id);
     const props = component.props || {};
     const element = createComponent(component);
-    element.style.position = 'absolute';
     element.style.left = `${(props.x || 0) - parentOrigin.x}px`;
     element.style.top = `${(props.y || 0) - parentOrigin.y}px`;
     parent.append(element);
+
     for (const childId of children.get(id) || []) {
       mount(childId, element, {x: props.x || 0, y: props.y || 0});
     }
+
     if (component.typeId === 'button' || component.typeId === 'menu_item') {
       element.addEventListener('click', () => sendEvent({
-        event_type: 'successful_action', element_id: id, action_id: props.action_id || undefined
+        event_type: 'successful_action',
+        element_id: id,
+        action_id: props.action_id || undefined
       }).catch(error => feedback(error.message)));
     } else if (['text_field', 'text_area', 'select', 'slider'].includes(component.typeId)) {
-      element.addEventListener('focus', () => sendEvent({event_type: 'focus', element_id: id}).catch(console.error));
-      element.addEventListener('blur', () => sendEvent({event_type: 'blur', element_id: id}).catch(console.error));
+      element.addEventListener('focus', () => sendEvent({event_type: 'focus', element_id: id}).catch(error => feedback(error.message)));
+      element.addEventListener('blur', () => sendEvent({event_type: 'blur', element_id: id}).catch(error => feedback(error.message)));
     }
   }
+
   const roots = model.components.filter(component => !childIds.has(component.id));
   roots.sort((a, b) => (a.props?.order ?? 0) - (b.props?.order ?? 0));
   for (const component of roots) mount(component.id, root);
   for (const component of model.components) {
     if (!rendered.has(component.id)) mount(component.id, root);
   }
-  document.getElementById('ui-view').textContent = JSON.stringify(model, null, 2);
-  document.getElementById('interface-title').textContent = model.title || model.id;
-}
 
-function renderUserModel(model) {
-  document.getElementById('model-view').textContent = model ? JSON.stringify(model, null, 2) : 'Пока нет событий';
-  document.getElementById('stat-events').textContent = model?.counters?.total_events ?? '0';
-  document.getElementById('stat-errors').textContent = model?.counters?.total_errors ?? '0';
+  document.getElementById('interface-title').textContent = model.title || model.id || INTERFACE;
+  document.getElementById('empty-state').hidden = model.components.length !== 0;
+  document.getElementById('ui-view').textContent = JSON.stringify(model, null, 2);
 }
 
 async function pollRuntime() {
@@ -174,36 +215,60 @@ async function pollRuntime() {
       if (seen.has(command.token)) continue;
       seen.add(command.token);
       let success = false;
-      try { renderInterface(command.model); success = true; }
-      catch (error) { console.error(error); }
-      await api('/api/runtime/ack', {method: 'POST', body: JSON.stringify({token: command.token, success})});
+      try {
+        renderInterface(command.model);
+        success = true;
+      } catch (error) {
+        console.error(error);
+      }
+      await api('/api/runtime/ack', {
+        method: 'POST',
+        body: JSON.stringify({token: command.token, success})
+      });
     }
-  } catch (error) { console.error('Ошибка связи с runtime', error); }
+  } catch (error) {
+    console.error('Ошибка связи с runtime', error);
+  }
   setTimeout(pollRuntime, 200);
 }
 
 async function refresh() {
   const [health, userModel, state] = await Promise.all([
-    api('/api/health'), api(`/api/model/${USER}`), api(`/api/ui-state?${CONTEXT}`)
+    api('/api/health'),
+    api(`/api/model/${encodeURIComponent(USER)}`),
+    api(`/api/ui-state?${CONTEXT}`)
   ]);
+
   const status = document.getElementById('health');
   status.innerHTML = health.ok ? '<i></i> Система активна' : '<i></i> Нет подключения';
   status.classList.toggle('offline', !health.ok);
-  renderUserModel(userModel.model);
-  document.getElementById('pkg-view').textContent = JSON.stringify(state.packages, null, 2);
-  const version = document.getElementById('ui-version');
-  version.textContent = state.version || '—';
-  version.title = state.version || '';
+  document.getElementById('interface-id').textContent = `interface_id: ${state.interface_id}`;
+  document.getElementById('ui-version').textContent = state.version || '—';
+  document.getElementById('ui-version').title = state.version || '';
+  document.getElementById('model-view').textContent = userModel.model
+    ? JSON.stringify(userModel.model, null, 2)
+    : 'Пока нет событий пользователя';
+  document.getElementById('pkg-view').textContent = JSON.stringify(state.packages || [], null, 2);
   renderInterface(state.model);
 }
 
-document.getElementById('btn-refresh').addEventListener('click', () => refresh().catch(error => feedback(error.message)));
-document.getElementById('btn-reset-b').addEventListener('click', async () => {
-  try { await api('/api/reset-b', {method: 'POST', body: '{}'}); feedback('Ограничение повторов B сброшено.'); }
-  catch (error) { feedback(error.message); }
+document.getElementById('btn-refresh').addEventListener('click', () => {
+  refresh().catch(error => feedback(error.message));
 });
-document.querySelector('.demo-card')?.setAttribute('hidden', 'hidden');
-document.querySelector('.main-column').innerHTML = '<section class="task-card"><div class="task-top"><div class="section-kicker">SC UI MODEL</div></div><h2 id="interface-title">Загрузка интерфейса…</h2><div id="interface-root" class="sc-interface-root"></div></section>';
+document.getElementById('btn-reset-b').addEventListener('click', async () => {
+  try {
+    await api('/api/reset-b', {method: 'POST', body: '{}'});
+    feedback('Ограничение повторов B сброшено.');
+  } catch (error) {
+    feedback(error.message);
+  }
+});
+document.getElementById('theme').addEventListener('change', event => {
+  document.body.classList.toggle('theme-dark', event.target.value === 'dark');
+});
+document.title = `${INTERFACE} — SC UI Runtime`;
+document.getElementById('interface-id').textContent = `interface_id: ${INTERFACE}`;
+
 pollRuntime();
 refresh().catch(error => {
   document.getElementById('health').classList.add('offline');
