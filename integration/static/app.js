@@ -129,14 +129,16 @@ function createComponent(component) {
       element.rows = 4;
       element.setAttribute('aria-label', props.name || component.id);
       break;
-    case 'slider':
+    case 'slider': {
       element = document.createElement('input');
       element.type = 'range';
       element.min = '0';
       element.max = '100';
-      element.value = '50';
+      const initial = Number(props.text_value);
+      element.value = Number.isFinite(initial) ? String(Math.min(100, Math.max(0, initial))) : '50';
       element.setAttribute('aria-label', props.name || component.id);
       break;
+    }
     case 'select':
       element = document.createElement('select');
       element.setAttribute('aria-label', props.name || component.id);
@@ -262,6 +264,7 @@ function renderInterface(model) {
         }
       }
       if (props.text_value) element.value = props.text_value;
+      if (element.selectedIndex < 0 && element.options.length) element.selectedIndex = 0;
     } else {
       for (const childId of children.get(id) || []) {
         mount(childId, element, {x: props.x || 0, y: props.y || 0});
@@ -280,27 +283,39 @@ function renderInterface(model) {
           element_id: id,
           action_id: props.action_id || undefined
         };
-        if (linkedInputs.length) {
-          event.property = 'input_values';
-          event.new_value = values;
+        if (linkedInputs.length || linkedOutputs.length) {
+          event.property = 'action_context';
+          event.new_value = {
+            input_values: values,
+            output_target_ids: linkedOutputs
+          };
         }
         sendEvent(event).catch(error => feedback(error.message));
       });
-    } else if (component.typeId === 'select') {
+    } else if (['text_field', 'text_area', 'slider', 'select'].includes(component.typeId)) {
+      element.addEventListener('focus', () => sendEvent({event_type: 'focus', element_id: id}).catch(error => feedback(error.message)));
+      element.addEventListener('blur', () => sendEvent({event_type: 'blur', element_id: id}).catch(error => feedback(error.message)));
       element.addEventListener('change', () => {
-        const values = readLinkedInputs(root, linkedInputs);
-        values.selected_value = element.value;
-        sendEvent({
+        const event = {
           event_type: 'successful_action',
           element_id: id,
           action_id: props.action_id || undefined,
-          property: 'input_values',
-          new_value: values
-        }).catch(error => feedback(error.message));
+          property: 'input_value',
+          new_value: readInputValue(element)
+        };
+        if (linkedInputs.length) event.new_value = {
+          value: event.new_value,
+          input_values: readLinkedInputs(root, linkedInputs)
+        };
+        if (linkedOutputs.length) {
+          const value = event.new_value;
+          event.new_value = {
+            value,
+            output_target_ids: linkedOutputs
+          };
+        }
+        sendEvent(event).catch(error => feedback(error.message));
       });
-    } else if (['text_field', 'text_area', 'slider'].includes(component.typeId)) {
-      element.addEventListener('focus', () => sendEvent({event_type: 'focus', element_id: id}).catch(error => feedback(error.message)));
-      element.addEventListener('blur', () => sendEvent({event_type: 'blur', element_id: id}).catch(error => feedback(error.message)));
     }
   }
 
