@@ -63,6 +63,7 @@ _runtime = None
 _packages: list[dict[str, Any]] = []
 _ready = False
 _sc_ok = False
+_sc_c_ok = False
 
 
 class BrowserRuntime:
@@ -100,7 +101,7 @@ def _run(coro):
 
 
 async def _bootstrap() -> None:
-    global _module_a, _module_b, _module_c, _ready, _sc_ok, _runtime, _repository
+    global _module_a, _module_b, _module_c, _ready, _sc_ok, _sc_c_ok, _runtime, _repository
 
     cfg = ModuleAConfig(
         COLD_START_THRESHOLD=2,
@@ -149,6 +150,7 @@ async def _bootstrap() -> None:
             from module_c.sc_writer import ExclusiveScWriter
             adapter = ScUiModelAdapter(SC_WS, exclusive_writer=True)
             await adapter.connect()
+            _sc_c_ok = True
             sc_writer = ExclusiveScWriter(adapter)
             # SC is source of truth for property values; browser confirms screen.
             _runtime = ScModelRuntime(
@@ -159,6 +161,7 @@ async def _bootstrap() -> None:
             )
             print(f"[module-c] SC writer enabled ({SC_WS})")
         except Exception as exc:
+            _sc_c_ok = False
             print(f"[module-c] MODULE_C_USE_SC failed, falling back to browser only: {exc}")
             sc_writer = None
             _runtime = browser
@@ -301,6 +304,7 @@ class Handler(BaseHTTPRequestHandler):
                 {
                     "ok": _ready,
                     "sc": _sc_ok,
+                    "sc_c": _sc_c_ok,
                     "use_sc": USE_SC,
                     "use_sc_c": USE_SC_C,
                     "allow_shared_session_model": USE_SC_SHARED_SESSION_MODEL,
