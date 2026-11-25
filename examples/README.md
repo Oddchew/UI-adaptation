@@ -11,16 +11,16 @@ Module A → Module B → Module C с подтверждением примен�
 
 | ID | Тип | Основные свойства |
 |---|---|---|
-| `ui_action_test` | window | name: Action test |
+| `main_window` | window | name: Action test |
 | `show_button` | button | text_value: Показать результат; action_id: `show_status_panel` |
 | `message_input` | text_field | name: Сообщение; text_value: Введите текст |
 | `status_panel` | window | name: Результат; visible: `false` |
 
 Установите вложенность через `nrel_ui_contains`:
 
-- `ui_action_test` → `show_button`
-- `ui_action_test` → `message_input`
-- `ui_action_test` → `status_panel`
+- `main_window` → `show_button`
+- `main_window` → `message_input`
+- `main_window` → `status_panel`
 
 Добавьте связи от кнопки:
 
