@@ -32,9 +32,10 @@
 
 | Артефакт | Назначение |
 |----------|------------|
-| `module_c/catalog.py` | `COMPONENT_TYPES`, `PROPERTY_TYPES`, `ADAPTABLE_PROPERTIES`, SC-имена |
-| `module_c/model.py` | Импортирует каталог; `AdaptationPolicy.from_catalog(ids)` |
-| `sc/adaptation_effect_and_catalog.scs` | Онтологические маркеры adaptable / forbidden свойств |
+| `module_c/catalog.py` | `COMPONENT_TYPES`, `PROPERTY_TYPES`, `LINK_KINDS`, `ADAPTABLE_PROPERTIES`, SC-имена |
+| `module_c/model.py` | `normalize_model` + `AdaptationPolicy.from_catalog` |
+| `module_c/sc_model.py` | чтение `contains` / `input_target` / `output_target` |
+| `sc/adaptation_effect_and_catalog.scs` | маркеры adaptable / forbidden + nrel input/output target |
 
 Идентификаторы `typeId` и ключи свойств в run-time **совпадают** с редактором.
 Политика адаптации по умолчанию разрешает только `ADAPTABLE_PROPERTIES`;
@@ -86,3 +87,17 @@ cp sc/user_model_and_events.scs sc/module_c_adaptation.scs sc/adaptation_effect_
 | Dual-write (тест/гибрид) | `ModuleC(..., sc_writer=writer)` при browser runtime | После валидации команда сначала идёт в `sc_writer.apply`, при ошибке `failure_reason=sc_write:…` |
 
 `ScModelRuntime` больше не вызывает `adapter.update_property` напрямую — только через `ExclusiveScWriter`.
+
+## 7. Каталог: связи input_target / output_target и action_id
+
+Синхронизация с `ostis-ui-editor/docs/catalog.md` (2026-11-24):
+
+| kind | SC | Источник | Цель |
+|------|-----|----------|------|
+| `contains` | `nrel_ui_contains` | любой компонент | любой |
+| `input_target` | `nrel_ui_input_target` | button, select, menu_item | text_field, text_area, select, slider |
+| `output_target` | `nrel_ui_output_target` | button, select, menu_item | text, fields, image, sound, list, menus, select, slider, window, scroll |
+
+`action_id` — только у **button / select / menu_item** (не адаптируется).
+
+Код: `module_c/catalog.py` (`LINK_KINDS`, `validate_link`, `ACTION_COMPONENT_TYPES`), `normalize_model`, `ScUiModelAdapter.read_model`.
