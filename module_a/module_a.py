@@ -108,7 +108,17 @@ class ModuleA:
                 applied_at = datetime.fromisoformat(result.applied_at.replace("Z", "+00:00"))
                 if applied_at.tzinfo is None:
                     applied_at = applied_at.replace(tzinfo=timezone.utc)
-                window_start = datetime.fromisoformat(model.observation.window_start.replace("Z", "+00:00"))
+                try:
+                    window_start = datetime.fromisoformat(
+                        model.observation.window_start.replace("Z", "+00:00")
+                    )
+                except (AttributeError, TypeError, ValueError):
+                    logger.warning(
+                        "ModuleA: invalid observation window_start for user %s; "
+                        "adaptation effect will not be scored",
+                        result.user_id,
+                    )
+                    return
                 if window_start.tzinfo is None:
                     window_start = window_start.replace(tzinfo=timezone.utc)
                 before = []
