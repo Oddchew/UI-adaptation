@@ -97,24 +97,36 @@ class ModuleA:
         # Register applied adaptation for later effect evaluation
         try:
             model = await self._mgr.get_model(result.user_id)
-            baseline_err = float(model.observation.recent_error_rate) if model else 0.0
-            baseline_help = float(model.observation.recent_help_rate) if model else 0.0
-            baseline_suc = int(model.counters.successful_actions) if model else 0
+            baseline_err = 0.0
+            baseline_help = 0.0
+            baseline_suc = 0
             baseline_success_rate = 0.0
             if model is not None:
                 baseline_events = await self._mgr.get_all_events(result.user_id)
                 baseline_events = [e for e in baseline_events
                     if e.interface_id == result.interface_id and e.session_id == result.session_id]
-                parsed = []
+                applied_at = datetime.fromisoformat(result.applied_at.replace("Z", "+00:00"))
+                if applied_at.tzinfo is None:
+                    applied_at = applied_at.replace(tzinfo=timezone.utc)
+                window_start = datetime.fromisoformat(model.observation.window_start.replace("Z", "+00:00"))
+                if window_start.tzinfo is None:
+                    window_start = window_start.replace(tzinfo=timezone.utc)
+                before = []
                 for event in baseline_events:
                     try:
-                        parsed.append((datetime.fromisoformat(event.timestamp.replace("Z", "+00:00")), event))
+                        event_time = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00"))
+                        if event_time.tzinfo is None:
+                            event_time = event_time.replace(tzinfo=timezone.utc)
                     except (TypeError, ValueError):
                         continue
-                applied_at = datetime.fromisoformat(result.applied_at.replace("Z", "+00:00"))
-                before = [e for ts, e in parsed if ts <= applied_at]
+                    if window_start <= event_time <= applied_at:
+                        before.append(event)
                 if before:
-                    baseline_success_rate = sum(1 for e in before if e.event_type == EventType.SUCCESSFUL_ACTION) / len(before)
+                    total = len(before)
+                    baseline_err = sum(1 for e in before if e.event_type == EventType.ERROR) / total
+                    baseline_help = sum(1 for e in before if e.event_type == EventType.HELP_REQUEST) / total
+                    baseline_success_rate = sum(1 for e in before if e.event_type == EventType.SUCCESSFUL_ACTION) / total
+                    baseline_suc = sum(1 for e in before if e.event_type == EventType.SUCCESSFUL_ACTION)
             rule_id = None
             if result.reason and result.reason.startswith("R_"):
                 rule_id = result.reason

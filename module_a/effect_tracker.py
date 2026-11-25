@@ -18,8 +18,9 @@ def _parse_ts(ts: str) -> Optional[datetime]:
     if not ts:
         return None
     try:
-        return datetime.fromisoformat(ts.replace("Z", "+00:00"))
-    except Exception:
+        parsed = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
+    except (TypeError, ValueError):
         return None
 
 
@@ -141,10 +142,6 @@ class EffectTracker:
                 event_time = _parse_ts(event.timestamp)
                 if event_time is None:
                     continue
-                if event_time.tzinfo is None:
-                    event_time = event_time.replace(tzinfo=timezone.utc)
-                if applied.tzinfo is None:
-                    applied = applied.replace(tzinfo=timezone.utc)
                 if applied < event_time <= window_end:
                     post.append(event)
             if len(post) < cfg.min_events_for_score:
@@ -182,6 +179,8 @@ class EffectTracker:
             self._pending.pop(rid, None)
         if len(self._scored) > 200:
             self._scored = self._scored[-200:]
+        if len(self._claimed_event_ids) > 1000:
+            self._claimed_event_ids = set(list(self._claimed_event_ids)[-500:])
         return scored
 
     def _update_rule(self, sample: EffectSample) -> None:

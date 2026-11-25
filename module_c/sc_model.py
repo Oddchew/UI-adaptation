@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import inspect
 import re
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
@@ -273,19 +274,40 @@ class ScModelRuntime:
                         changes.append((existing['id'], key, old, new))
             if len(changes) > 1:
                 raise ScModelError('SC runtime requires a single-property update')
+            rollback = None
             if changes:
                 component_id, key, old, new = changes[0]
+                request_id = f'sc-runtime:{physical_id}:{component_id}:{key}:{uuid.uuid4().hex}'
                 result = await self.writer.apply(
                     interface_id=physical_id,
                     component_id=component_id,
                     property=key,
                     expected=old,
                     new_value=new,
-                    request_id=f'sc-runtime:{physical_id}:{component_id}:{key}',
+                    request_id=request_id,
                 )
                 if not result.ok and result.error not in (None, 'no_change_required'):
                     raise ScModelError(f'SC write failed: {result.error}')
-            if session_id:
-                await self.renderer.activate(interface_id, model, user_id=user_id, session_id=session_id)
-            else:
-                await self.renderer.activate(interface_id, model)
+                if result.error != 'no_change_required':
+                    rollback = (component_id, key, old, new)
+            try:
+                if session_id:
+                    await self.renderer.activate(interface_id, model, user_id=user_id, session_id=session_id)
+                else:
+                    await self.renderer.activate(interface_id, model)
+            except Exception as render_error:
+                if rollback is not None:
+                    component_id, key, old, new = rollback
+                    rollback_result = await self.writer.apply(
+                        interface_id=physical_id,
+                        component_id=component_id,
+                        property=key,
+                        expected=new,
+                        new_value=old,
+                        request_id=f'{request_id}:rollback',
+                    )
+                    if not rollback_result.ok:
+                        raise ScModelError(
+                            f'renderer failed and SC rollback failed; recovery required: {rollback_result.error}'
+                        ) from render_error
+                raise ScModelError('renderer failed; SC update was rolled back') from render_error

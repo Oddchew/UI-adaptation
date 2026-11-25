@@ -54,8 +54,10 @@ class ExclusiveScWriter:
         self._versions: dict[tuple[str, str, str], int] = {}
         self._last_values: dict[tuple[str, str, str], Any] = {}
         self._journal: list[dict[str, Any]] = []
+        if max_queue < 1:
+            raise ValueError("max_queue must be at least 1")
         self._max_queue = max_queue
-        self._inflight = 0
+        self._queued = 0
 
     def _key(self, interface_id: str, component_id: str, prop: str) -> tuple[str, str, str]:
         return (interface_id, component_id, prop)
