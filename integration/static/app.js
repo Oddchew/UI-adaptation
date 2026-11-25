@@ -126,10 +126,7 @@ function renderInterface(model) {
       }).catch(error => feedback(error.message)));
     } else if (['text_field', 'text_area', 'select', 'slider'].includes(component.typeId)) {
       element.addEventListener('focus', () => sendEvent({event_type: 'focus', element_id: id}).catch(console.error));
-      element.addEventListener('blur', () => sendEvent({
-        event_type: 'manual_override', element_id: id, property: 'text_value',
-        old_value: props.text_value || '', new_value: element.value
-      }).catch(error => feedback(error.message)));
+      element.addEventListener('blur', () => sendEvent({event_type: 'blur', element_id: id}).catch(console.error));
     }
   }
   const roots = model.components.filter(component => !childIds.has(component.id));
