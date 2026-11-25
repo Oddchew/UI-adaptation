@@ -74,7 +74,7 @@ class EffectTracker:
         self._pending: dict[str, EffectSample] = {}
         self._scored: list[EffectSample] = []
         self._rules: dict[tuple[str, str], RuleEffectiveness] = {}
-        self._claimed_event_ids: set[str] = set()
+        self._claimed_event_ids: dict[str, datetime] = {}
 
     def on_applied(
         self,
@@ -132,8 +132,9 @@ class EffectTracker:
 
             window_end = applied + timedelta(milliseconds=cfg.followup_window_ms)
             post = []
+            seen_in_sample: set[str] = set()
             for event in events:
-                if event.id in self._claimed_event_ids:
+                if event.id in self._claimed_event_ids or event.id in seen_in_sample:
                     continue
                 if event.user_id != sample.user_id or event.interface_id != sample.interface_id:
                     continue
@@ -144,6 +145,7 @@ class EffectTracker:
                     continue
                 if applied < event_time <= window_end:
                     post.append(event)
+                    seen_in_sample.add(event.id)
             if len(post) < cfg.min_events_for_score:
                 if age_ms > cfg.expire_after_ms:
                     sample.status = "expired"
@@ -170,7 +172,10 @@ class EffectTracker:
             sample.score = round(score, 4)
             sample.status = "scored"
             self._update_rule(sample)
-            self._claimed_event_ids.update(event.id for event in post)
+            for event in post:
+                event_time = _parse_ts(event.timestamp)
+                if event_time is not None:
+                    self._claimed_event_ids[event.id] = event_time
             scored.append(sample)
             self._scored.append(sample)
             to_drop.append(rid)
@@ -179,8 +184,12 @@ class EffectTracker:
             self._pending.pop(rid, None)
         if len(self._scored) > 200:
             self._scored = self._scored[-200:]
-        if len(self._claimed_event_ids) > 1000:
-            self._claimed_event_ids = set(list(self._claimed_event_ids)[-500:])
+        claim_expiry = timedelta(milliseconds=cfg.expire_after_ms)
+        self._claimed_event_ids = {
+            event_id: event_time
+            for event_id, event_time in self._claimed_event_ids.items()
+            if now <= event_time + claim_expiry
+        }
         return scored
 
     def _update_rule(self, sample: EffectSample) -> None:
