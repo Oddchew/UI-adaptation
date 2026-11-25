@@ -1,9 +1,10 @@
 const USER = 'user_demo';
 const SESSION = crypto.randomUUID();
-const INTERFACE = 'python_tutor_model';
-const CONTEXT = `user_id=${encodeURIComponent(USER)}&session_id=${encodeURIComponent(SESSION)}`;
+const params = new URLSearchParams(location.search);
+const INTERFACE = params.get('interface_id') || 'python_tutor_model';
+const CONTEXT = `user_id=${encodeURIComponent(USER)}&session_id=${encodeURIComponent(SESSION)}&interface_id=${encodeURIComponent(INTERFACE)}`;
 const seen = new Set();
-const controls = [...document.querySelectorAll('#demo-form button, #btn-error, #btn-help, #hide-hint, #open-history, #theme')];
+let currentModel = null;
 let feedbackTimer;
 
 async function api(path, options = {}) {
@@ -21,32 +22,128 @@ function feedback(message) {
   feedbackTimer = setTimeout(() => { toast.hidden = true; }, 4200);
 }
 
-function applyUi(ui) {
-  if (!ui || !ui.hints_panel || !ui.history_panel) throw new Error('Некорректная модель интерфейса');
-  if (typeof ui.hints_panel.visible !== 'boolean' || typeof ui.history_panel.collapsed !== 'boolean') throw new Error('Некорректные свойства интерфейса');
-  document.getElementById('hints_panel').hidden = !ui.hints_panel.visible;
-  document.getElementById('history_content').hidden = ui.history_panel.collapsed;
-  document.getElementById('history-collapsed').hidden = !ui.history_panel.collapsed;
-  document.getElementById('history-status').textContent = ui.history_panel.collapsed ? 'Свёрнута' : 'В этом сеансе';
-  document.getElementById('stat-hint').textContent = ui.hints_panel.visible ? 'Открыта' : 'Скрыта';
-  document.getElementById('ui-view').textContent = JSON.stringify(ui, null, 2);
+function sendEvent(payload) {
+  return api('/api/event', {
+    method: 'POST',
+    body: JSON.stringify({user_id: USER, interface_id: INTERFACE, session_id: SESSION, ...payload})
+  }).then(refresh);
 }
 
-function renderModel(model) {
+function applyStyle(element, props) {
+  if (props.visible === false) element.hidden = true;
+  if (props.enabled === false) element.setAttribute('aria-disabled', 'true');
+  if (props.opacity !== undefined) element.style.opacity = String(props.opacity);
+  if (props.width !== undefined) element.style.width = `${props.width}px`;
+  if (props.height !== undefined) element.style.height = `${props.height}px`;
+  if (props.background_color) element.style.backgroundColor = props.background_color;
+  if (props.color) element.style.color = props.color;
+  if (props.border_color) element.style.borderColor = props.border_color;
+  if (props.border_width !== undefined) element.style.borderWidth = `${props.border_width}px`;
+  if (props.border_style) element.style.borderStyle = props.border_style;
+  if (props.corner_radius !== undefined) element.style.borderRadius = `${props.corner_radius}px`;
+  if (props.font_size !== undefined) element.style.fontSize = `${props.font_size}px`;
+  if (props.font_weight) element.style.fontWeight = props.font_weight;
+  if (props.text_align) element.style.textAlign = props.text_align;
+  if (props.padding !== undefined) element.style.padding = `${props.padding}px`;
+  if (props.margin !== undefined) element.style.margin = `${props.margin}px`;
+  if (props.tooltip) element.title = props.tooltip;
+}
+
+function createComponent(component) {
+  const props = component.props || {};
+  const text = props.text_value || props.name || component.id;
+  let element;
+  switch (component.typeId) {
+    case 'text': element = document.createElement('p'); element.textContent = text; break;
+    case 'image':
+      element = document.createElement('div');
+      element.className = 'sc-image-placeholder';
+      element.textContent = text || '[image]';
+      element.setAttribute('role', 'img');
+      element.setAttribute('aria-label', text);
+      break;
+    case 'sound':
+      element = document.createElement('div'); element.textContent = text || '[sound]'; break;
+    case 'divider': element = document.createElement('hr'); break;
+    case 'spacer': element = document.createElement('div'); element.style.minHeight = '16px'; break;
+    case 'text_field':
+      element = document.createElement('input'); element.type = 'text';
+      element.value = props.text_value || ''; element.placeholder = props.tooltip || props.name || '';
+      break;
+    case 'text_area':
+      element = document.createElement('textarea'); element.value = props.text_value || '';
+      element.rows = 4; element.setAttribute('aria-label', props.name || component.id);
+      break;
+    case 'slider':
+      element = document.createElement('input'); element.type = 'range'; break;
+    case 'select': element = document.createElement('select'); break;
+    case 'button':
+    case 'menu_item':
+      element = document.createElement('button'); element.type = 'button'; element.textContent = text; break;
+    case 'list': element = document.createElement('ul'); break;
+    case 'menu':
+    case 'menu_bar': element = document.createElement('nav'); break;
+    case 'scroll':
+    case 'window': element = document.createElement('section'); break;
+    default: element = document.createElement('div'); element.textContent = text;
+  }
+  element.dataset.componentId = component.id;
+  element.classList.add('sc-ui-component', `sc-ui-${component.typeId}`);
+  applyStyle(element, props);
+  if (props.enabled === false && 'disabled' in element) element.disabled = true;
+  if (props.enabled === false) element.setAttribute('aria-disabled', 'true');
+  return element;
+}
+
+function renderInterface(model) {
+  if (!model || !Array.isArray(model.components) || !Array.isArray(model.links)) {
+    throw new Error('Сервер вернул некорректную SC UI-модель');
+  }
+  currentModel = model;
+  const root = document.getElementById('interface-root');
+  root.replaceChildren();
+  const byId = new Map(model.components.map(component => [component.id, component]));
+  const children = new Map();
+  const childIds = new Set();
+  for (const link of model.links) {
+    if (link.kind !== 'contains') continue;
+    if (!children.has(link.sourceId)) children.set(link.sourceId, []);
+    children.get(link.sourceId).push(link.targetId);
+    childIds.add(link.targetId);
+  }
+  const rendered = new Set();
+  function mount(id, parent) {
+    const component = byId.get(id);
+    if (!component || rendered.has(id)) return;
+    rendered.add(id);
+    const element = createComponent(component);
+    parent.append(element);
+    for (const childId of children.get(id) || []) mount(childId, element);
+    const props = component.props || {};
+    if (component.typeId === 'button' || component.typeId === 'menu_item') {
+      element.addEventListener('click', () => sendEvent({
+        event_type: 'successful_action', element_id: id, action_id: props.action_id || undefined
+      }).catch(error => feedback(error.message)));
+    } else if (['text_field', 'text_area', 'select', 'slider'].includes(component.typeId)) {
+      element.addEventListener('focus', () => sendEvent({event_type: 'focus', element_id: id}).catch(console.error));
+      element.addEventListener('blur', () => sendEvent({
+        event_type: 'manual_override', element_id: id, property: 'text_value',
+        old_value: props.text_value || '', new_value: element.value
+      }).catch(error => feedback(error.message)));
+    }
+  }
+  const roots = model.components.filter(component => !childIds.has(component.id));
+  roots.sort((a, b) => (a.props?.order ?? 0) - (b.props?.order ?? 0));
+  for (const component of roots) mount(component.id, root);
+  for (const component of model.components) mount(component.id, root);
+  document.getElementById('ui-view').textContent = JSON.stringify(model, null, 2);
+  document.getElementById('interface-title').textContent = model.title || model.id;
+}
+
+function renderUserModel(model) {
   document.getElementById('model-view').textContent = model ? JSON.stringify(model, null, 2) : 'Пока нет событий';
   document.getElementById('stat-events').textContent = model?.counters?.total_events ?? '0';
   document.getElementById('stat-errors').textContent = model?.counters?.total_errors ?? '0';
-}
-
-function addHistory(label) {
-  document.getElementById('history-empty').hidden = true;
-  const li = document.createElement('li');
-  const text = document.createElement('span');
-  const time = document.createElement('time');
-  text.textContent = label;
-  time.textContent = new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
-  li.append(text, time);
-  document.getElementById('history-list').prepend(li);
 }
 
 async function pollRuntime() {
@@ -56,63 +153,38 @@ async function pollRuntime() {
       if (seen.has(command.token)) continue;
       seen.add(command.token);
       let success = false;
-      try { applyUi(command.model); success = true; } catch (error) { console.error(error); }
+      try { renderInterface(command.model); success = true; }
+      catch (error) { console.error(error); }
       await api('/api/runtime/ack', {method: 'POST', body: JSON.stringify({token: command.token, success})});
     }
-  } catch (error) {
-    console.error('Ошибка связи с runtime', error);
-  }
+  } catch (error) { console.error('Ошибка связи с runtime', error); }
   setTimeout(pollRuntime, 200);
 }
 
 async function refresh() {
-  const [health, model, state] = await Promise.all([api('/api/health'), api(`/api/model/${USER}`), api(`/api/ui-state?${CONTEXT}`)]);
+  const [health, userModel, state] = await Promise.all([
+    api('/api/health'), api(`/api/model/${USER}`), api(`/api/ui-state?${CONTEXT}`)
+  ]);
   const status = document.getElementById('health');
   status.innerHTML = health.ok ? '<i></i> Система активна' : '<i></i> Нет подключения';
   status.classList.toggle('offline', !health.ok);
-  renderModel(model.model);
+  renderUserModel(userModel.model);
   document.getElementById('pkg-view').textContent = JSON.stringify(state.packages, null, 2);
   const version = document.getElementById('ui-version');
   version.textContent = state.version || '—';
   version.title = state.version || '';
-  applyUi(state.ui);
+  renderInterface(state.model);
 }
 
-async function sendEvent(payload, historyLabel, message) {
-  controls.forEach(control => { control.disabled = true; });
-  try {
-    await api('/api/event', {method: 'POST', body: JSON.stringify({user_id: USER, interface_id: INTERFACE, session_id: SESSION, ...payload})});
-    if (historyLabel) addHistory(historyLabel);
-    await refresh();
-    if (message) feedback(message);
-  } catch (error) {
-    console.error(error);
-    feedback(`Не удалось выполнить действие: ${error.message}`);
-    const status = document.getElementById('health');
-    status.innerHTML = '<i></i> Нет подключения';
-    status.classList.add('offline');
-  } finally {
-    controls.forEach(control => { control.disabled = false; });
-  }
-}
-
-document.getElementById('demo-form').addEventListener('submit', event => {
-  event.preventDefault();
-  sendEvent({event_type: 'successful_action', element_id: 'code_editor', action_id: 'check_run'}, 'Имитация успешной проверки', 'Событие успешной проверки отправлено в модуль A.');
-});
-document.getElementById('btn-error').addEventListener('click', () => sendEvent({event_type: 'error', element_id: 'code_editor', error_code: 'validation'}, 'Смоделирована ошибка проверки', 'Событие ошибки отправлено в модуль A.'));
-document.getElementById('btn-help').addEventListener('click', () => sendEvent({event_type: 'help_request', element_id: 'hints_panel'}, 'Запрошена помощь', 'Запрос помощи отправлен в модуль A.'));
-document.getElementById('hide-hint').addEventListener('click', () => sendEvent({event_type: 'hint_hide', element_id: 'hints_panel'}, 'Подсказка скрыта'));
-document.getElementById('open-history').addEventListener('click', () => sendEvent({event_type: 'block_open', element_id: 'history_content'}, 'История развёрнута'));
-document.getElementById('theme').addEventListener('change', event => {
-  const theme = event.target.value;
-  document.body.classList.toggle('theme-dark', theme === 'dark');
-  sendEvent({event_type: 'manual_override', element_id: 'theme_select', property: 'theme', new_value: theme}, 'Изменено оформление');
-});
 document.getElementById('btn-refresh').addEventListener('click', () => refresh().catch(error => feedback(error.message)));
 document.getElementById('btn-reset-b').addEventListener('click', async () => {
   try { await api('/api/reset-b', {method: 'POST', body: '{}'}); feedback('Ограничение повторов B сброшено.'); }
   catch (error) { feedback(error.message); }
 });
+document.querySelector('.demo-card')?.setAttribute('hidden', 'hidden');
+document.querySelector('.main-column').innerHTML = '<section class="task-card"><div class="task-top"><div class="section-kicker">SC UI MODEL</div></div><h2 id="interface-title">Загрузка интерфейса…</h2><div id="interface-root" class="sc-interface-root"></div></section>';
 pollRuntime();
-refresh().catch(error => { document.getElementById('health').classList.add('offline'); feedback(`Не удалось подключиться: ${error.message}`); });
+refresh().catch(error => {
+  document.getElementById('health').classList.add('offline');
+  feedback(`Не удалось загрузить интерфейс ${INTERFACE}: ${error.message}`);
+});
