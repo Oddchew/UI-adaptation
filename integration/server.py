@@ -42,6 +42,8 @@ from module_a import (  # noqa: E402
 )
 from module_b import ModuleB  # noqa: E402 — реальный модуль B, не заглушка
 from module_c import ModuleC, SQLiteRepository, default_model, display_state
+from module_c.model import AdaptationPolicy
+from module_c.catalog import ADAPTABLE_PROPERTIES
 
 STATIC = Path(__file__).resolve().parent / "static"
 PORT = int(os.environ.get("MODULE_A_PORT", "8765"))
@@ -123,13 +125,15 @@ async def _bootstrap() -> None:
     rules_src = RULES_PATH if RULES_PATH else None
     if rules_src:
         print(f"[module-b] rules file: {rules_src}")
-    else:
+    elif not USE_SC_C:
         default_json = ROOT / "module_b" / "rules_default.json"
         if default_json.is_file():
             rules_src = str(default_json)
             print(f"[module-b] rules file: {rules_src}")
         else:
             print("[module-b] built-in DEFAULT_RULES")
+    else:
+        print("[module-b] no generic rules configured; set ADAPTATION_RULES")
     _module_b = ModuleB(rules=rules_src if rules_src else ([] if USE_SC_C else None))
     _repository = SQLiteRepository(os.environ.get('MODULE_C_DB', str(ROOT / 'module_c.sqlite3')))
     # The SC-backed path discovers each interface by interface_id on demand.
@@ -235,6 +239,12 @@ async def _ensure_interface(interface_id: str) -> None:
         raise KeyError(f"unknown interface: {interface_id}")
     model = await adapter.read_model(interface_id)
     _repository.register(interface_id, model)
+    # Every component from the SC model receives the catalog's safe property
+    # allow-list. Component IDs are scoped by interface at command validation.
+    allowed = dict(_module_c.policy.allowed)
+    for component in model["components"]:
+        allowed.setdefault(component["id"], set(ADAPTABLE_PROPERTIES))
+    _module_c.policy = AdaptationPolicy(allowed)
 
 
 def _json_response(handler: BaseHTTPRequestHandler, code: int, payload: Any) -> None:
