@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Awaitable, Callable, Optional
 
 from .package_builder import PackageBuilder
