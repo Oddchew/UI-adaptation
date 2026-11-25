@@ -71,3 +71,30 @@ cd ~/Sundries/ostis/ostis-example-app
 ```
 
 Там можно смотреть KB; события адаптации идут через UI на :8765, не через sc-web.
+
+
+## Универсальный SC UI runtime
+
+При `MODULE_C_USE_SC=1` сервер не регистрирует демонстрационную модель `python_tutor_model`.
+Интерфейс загружается лениво из SC по его `interface_id` при первом запросе:
+
+```bash
+MODULE_C_USE_SC=1 \
+MODULE_C_ALLOW_SHARED_SESSION_MODEL=1 \
+PYTHONPATH=. python3 integration/server.py
+```
+
+Откройте интерфейс, передав его идентификатор из `nrel_ui_id`:
+
+```
+http://127.0.0.1:8765/?interface_id=<interface_id>
+```
+
+API состояния также требует этот идентификатор:
+`GET /api/ui-state?interface_id=<interface_id>`.
+Ответ содержит полный снимок `model` (components, props, links), а не только demo-представление.
+События `POST /api/event` в SC-режиме должны содержать тот же `interface_id`.
+
+В SC-режиме демонстрационные правила Python Lab автоматически не загружаются.
+Для адаптации задайте `ADAPTATION_RULES` с правилами, предназначенными для соответствующего набора интерфейсов.
+Если правила не заданы, Module B безопасно не формирует автоматические команды.
