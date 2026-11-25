@@ -181,6 +181,16 @@ function readInputValue(element) {
   return element.value;
 }
 
+function readLinkedInputs(root, targetIds) {
+  const values = {};
+  const elements = Array.from(root.querySelectorAll('[data-component-id]'));
+  for (const targetId of targetIds) {
+    const target = elements.find(element => element.dataset.componentId === targetId);
+    values[targetId] = readInputValue(target);
+  }
+  return values;
+}
+
 function renderInterface(model) {
   if (!model || !Array.isArray(model.components) || !Array.isArray(model.links)) {
     throw new Error('Сервер вернул некорректную SC UI-модель');
@@ -264,11 +274,7 @@ function renderInterface(model) {
 
     if (component.typeId === 'button' || component.typeId === 'menu_item') {
       element.addEventListener('click', () => {
-        const values = {};
-        for (const targetId of linkedInputs) {
-          const target = root.querySelector('[data-component-id="' + CSS.escape(targetId) + '"]');
-          values[targetId] = readInputValue(target);
-        }
+        const values = readLinkedInputs(root, linkedInputs);
         const event = {
           event_type: 'successful_action',
           element_id: id,
@@ -281,13 +287,17 @@ function renderInterface(model) {
         sendEvent(event).catch(error => feedback(error.message));
       });
     } else if (component.typeId === 'select') {
-      element.addEventListener('change', () => sendEvent({
-        event_type: 'successful_action',
-        element_id: id,
-        action_id: props.action_id || undefined,
-        property: 'selected_value',
-        new_value: element.value
-      }).catch(error => feedback(error.message)));
+      element.addEventListener('change', () => {
+        const values = readLinkedInputs(root, linkedInputs);
+        values.selected_value = element.value;
+        sendEvent({
+          event_type: 'successful_action',
+          element_id: id,
+          action_id: props.action_id || undefined,
+          property: 'input_values',
+          new_value: values
+        }).catch(error => feedback(error.message));
+      });
     } else if (['text_field', 'text_area', 'slider'].includes(component.typeId)) {
       element.addEventListener('focus', () => sendEvent({event_type: 'focus', element_id: id}).catch(error => feedback(error.message)));
       element.addEventListener('blur', () => sendEvent({event_type: 'blur', element_id: id}).catch(error => feedback(error.message)));
