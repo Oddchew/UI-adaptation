@@ -113,6 +113,9 @@ function renderInterface(model) {
     children.get(link.sourceId).push(link.targetId);
     childIds.add(link.targetId);
   }
+  for (const ids of children.values()) {
+    ids.sort((a, b) => (byId.get(a)?.props?.order ?? 0) - (byId.get(b)?.props?.order ?? 0));
+  }
   const rendered = new Set();
   const bounds = model.components.reduce((size, component) => {
     const props = component.props || {};
@@ -151,6 +154,9 @@ function renderInterface(model) {
   const roots = model.components.filter(component => !childIds.has(component.id));
   roots.sort((a, b) => (a.props?.order ?? 0) - (b.props?.order ?? 0));
   for (const component of roots) mount(component.id, root);
+  for (const component of model.components) {
+    if (!rendered.has(component.id)) mount(component.id, root);
+  }
   document.getElementById('ui-view').textContent = JSON.stringify(model, null, 2);
   document.getElementById('interface-title').textContent = model.title || model.id;
 }
