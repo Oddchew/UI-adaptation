@@ -118,18 +118,24 @@ class ScUiModelAdapter:
         if len(matches) != 1: raise ScAmbiguousModel(f'component not found or ambiguous: {component_id}')
         return matches[0]
 
-    def _property(self, node, key: str):
+    def _property(self, node, key: str, *, required: bool = True):
         from sc_client.client import search_by_template
         from sc_client.constants import sc_type
         from sc_client.models import ScTemplate
-        if key not in PROPERTY_TYPES: raise ScModelError(f'unknown property: {key}')
+        if key not in PROPERTY_TYPES:
+            raise ScModelError(f'unknown property: {key}')
         t = ScTemplate()
         t.triple(self._key('concept_ui_' + key), sc_type.VAR_PERM_POS_ARC, sc_type.VAR_NODE >> '_prop')
         t.triple('_prop', sc_type.VAR_PERM_POS_ARC, node)
         t.quintuple('_prop', sc_type.VAR_COMMON_ARC, sc_type.VAR_NODE_LINK >> '_value',
                     sc_type.VAR_PERM_POS_ARC, self._key('nrel_ui_value'))
         rows = search_by_template(t)
-        if len(rows) != 1: raise ScAmbiguousModel(f'property missing or ambiguous: {key}')
+        if not rows:
+            if required:
+                raise ScModelError(f'property missing: {key}')
+            return None, None
+        if len(rows) != 1:
+            raise ScAmbiguousModel(f'property ambiguous: {key}')
         link = rows[0].get('_value')
         return _decode_value(key, self._content(link)), link
 
@@ -166,7 +172,9 @@ class ScUiModelAdapter:
                     for key in PROPERTY_TYPES:
                         if key == 'action_id' and not component_allows_action_id(type_id):
                             continue
-                        props[key] = self._property(node, key)[0]
+                        value, _ = self._property(node, key, required=False)
+                        if value is not None:
+                            props[key] = value
                     components.append({'id': identifier, 'typeId': type_id, 'props': props})
                     addresses.append((node, identifier))
                 links = []
@@ -185,7 +193,8 @@ class ScUiModelAdapter:
                                 'sourceId': parent_id,
                                 'targetId': matches[0],
                             })
-                return {'id': interface_id, 'title': self._property(interface, 'name')[0],
+                title, _ = self._property(interface, 'name', required=False)
+                return {'id': interface_id, 'title': title or interface_id,
                         'components': components, 'links': links}
             return await asyncio.to_thread(read)
 
