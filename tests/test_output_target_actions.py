@@ -117,3 +117,80 @@ class OutputTargetActionTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    async def test_action_flows_from_module_a_through_b_and_c(self):
+        from datetime import datetime, timezone
+
+        from module_a import ModuleA
+        from module_a.storage.memory import InMemoryStorage
+        from module_c import MemoryRepository, MemoryRuntime, ModuleC
+        from module_c.model import AdaptationPolicy
+
+        config = ModuleAConfig(PERIODIC_SNAPSHOT_MS=0)
+        module_a = ModuleA(InMemoryStorage(config), config)
+        repository = MemoryRepository()
+        runtime = MemoryRuntime()
+        repository.register(
+            "calendar",
+            {
+                "id": "calendar",
+                "components": [
+                    {
+                        "id": "save_button",
+                        "typeId": "button",
+                        "props": {"visible": True, "action_id": "save_calendar"},
+                    },
+                    {
+                        "id": "status_panel",
+                        "typeId": "window",
+                        "props": {"visible": False},
+                    },
+                ],
+                "links": [
+                    {
+                        "id": "save_status",
+                        "kind": "output_target",
+                        "sourceId": "save_button",
+                        "targetId": "status_panel",
+                    }
+                ],
+            },
+        )
+        module_c = ModuleC(
+            repository,
+            runtime,
+            policy=AdaptationPolicy.from_catalog(["save_button", "status_panel"]),
+        )
+        module_b = ModuleB(rules=[output_rule()])
+        module_b.set_version_provider(module_c.active_version)
+        module_b.set_command_handler(module_c.apply)
+        module_c.set_application_handler(module_a.handle_application_result)
+        module_a.set_package_handler(module_b.handle_package)
+
+        try:
+            await module_a.handle_event(
+                InteractionEvent(
+                    id="event-save-e2e",
+                    user_id="user-1",
+                    interface_id="calendar",
+                    session_id="session-1",
+                    event_type=EventType.SUCCESSFUL_ACTION,
+                    timestamp=datetime.now(timezone.utc).isoformat(),
+                    element_id="save_button",
+                    action_id="save_calendar",
+                    property="action_context",
+                    new_value={
+                        "input_values": {"title_field": "Planning"},
+                        "output_target_ids": ["status_panel"],
+                    },
+                )
+            )
+
+            version, model = await module_c.state("calendar", "user-1", "session-1")
+            status = next(item for item in model["components"] if item["id"] == "status_panel")
+            self.assertTrue(status["props"]["visible"])
+            self.assertNotEqual(version, "v1")
+            self.assertEqual(runtime.states["calendar"]["components"][1]["props"]["visible"], True)
+        finally:
+            module_a.dispose()
