@@ -165,7 +165,7 @@ class UserModel:
     # Effect evaluation (populated by EffectTracker)
     effect_summary: dict = field(default_factory=dict)
     # rule_id -> mean effectiveness score (positive = helpful)
-    rule_scores: dict = field(default_factory=dict)
+    rule_scores: dict[str, Any] = field(default_factory=dict)
     # Derived experience signals for richer B decisions
     struggle_index: float = 0.0  # 0..1 composite of recent error/help rates
     engagement_index: float = 0.0  # 0..1 from successful actions / events

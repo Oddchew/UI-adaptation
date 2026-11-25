@@ -72,65 +72,52 @@ class ExclusiveScWriter:
         expected: Any,
         new_value: Any,
         request_id: str,
+        expected_version: Optional[int] = None,
     ) -> WriteResult:
         started = time.monotonic()
-        async with self._lock:
-            if self._inflight >= self._max_queue:
-                return WriteResult(False, 0, "writer_queue_full", 0)
-            self._inflight += 1
-            key = self._key(interface_id, component_id, property)
-            try:
-                # Re-read from SC under lock (compare-and-set within process).
-                prop_info = await self.adapter.read_property(
-                    interface_id, component_id, property
-                )
-                current = prop_info.value
-                if type(current) is not type(expected) or current != expected:
-                    return WriteResult(
-                        False,
-                        self._versions.get(key, 0),
-                        "old_value_mismatch",
-                        int((time.monotonic() - started) * 1000),
-                    )
-                if current == new_value and type(current) is type(new_value):
-                    return WriteResult(
-                        True,
-                        self._versions.get(key, 0),
-                        "no_change_required",
-                        int((time.monotonic() - started) * 1000),
-                    )
-                await self.adapter.update_property(
-                    interface_id, component_id, property, expected, new_value
-                )
-                new_ver = self._versions.get(key, 0) + 1
-                self._versions[key] = new_ver
-                self._last_values[key] = new_value
-                entry = {
-                    "request_id": request_id,
-                    "interface_id": interface_id,
-                    "component_id": component_id,
-                    "property": property,
-                    "old": expected,
-                    "new": new_value,
-                    "version": new_ver,
-                    "ts": time.time(),
-                }
-                self._journal.append(entry)
-                if len(self._journal) > 500:
-                    self._journal = self._journal[-500:]
-                return WriteResult(
-                    True, new_ver, None, int((time.monotonic() - started) * 1000)
-                )
-            except Exception as exc:
-                logger.exception("ExclusiveScWriter.apply failed: %s", request_id)
-                return WriteResult(
-                    False,
-                    self._versions.get(key, 0),
-                    str(exc)[:200],
-                    int((time.monotonic() - started) * 1000),
-                )
-            finally:
-                self._inflight -= 1
+        if self._queued >= self._max_queue:
+            return WriteResult(False, 0, "writer_queue_full", 0)
+        self._queued += 1
+        try:
+            async with self._lock:
+                key = self._key(interface_id, component_id, property)
+                current_version = self._versions.get(key, 0)
+                if expected_version is not None and expected_version != current_version:
+                    return WriteResult(False, current_version, "version_mismatch",
+                                       int((time.monotonic() - started) * 1000))
+                try:
+                    prop_info = await self.adapter.read_property(interface_id, component_id, property)
+                    current = prop_info.value
+                    if type(current) is not type(expected) or current != expected:
+                        return WriteResult(False, current_version, "old_value_mismatch",
+                                           int((time.monotonic() - started) * 1000))
+                    if type(current) is type(new_value) and current == new_value:
+                        return WriteResult(True, current_version, "no_change_required",
+                                           int((time.monotonic() - started) * 1000))
+                    await self.adapter.update_property(interface_id, component_id, property, expected, new_value)
+                    new_version = current_version + 1
+                    self._versions[key] = new_version
+                    self._last_values[key] = new_value
+                    self._journal.append({
+                        "request_id": request_id,
+                        "interface_id": interface_id,
+                        "component_id": component_id,
+                        "property": property,
+                        "old": expected,
+                        "new": new_value,
+                        "version": new_version,
+                        "ts": time.time(),
+                    })
+                    if len(self._journal) > 500:
+                        self._journal = self._journal[-500:]
+                    return WriteResult(True, new_version, None,
+                                       int((time.monotonic() - started) * 1000))
+                except Exception as exc:
+                    logger.exception("ExclusiveScWriter.apply failed: %s", request_id)
+                    return WriteResult(False, current_version, str(exc)[:200],
+                                       int((time.monotonic() - started) * 1000))
+        finally:
+            self._queued -= 1
 
     def journal(self, limit: int = 50) -> list[dict[str, Any]]:
         return list(self._journal[-limit:])

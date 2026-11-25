@@ -34,6 +34,7 @@ class EffectSample:
     baseline_error_rate: float = 0.0
     baseline_help_rate: float = 0.0
     baseline_success_count: int = 0
+    baseline_success_rate: float = 0.0
     # after follow-up window
     followup_error_rate: Optional[float] = None
     followup_help_rate: Optional[float] = None
@@ -72,6 +73,7 @@ class EffectTracker:
         self._pending: dict[str, EffectSample] = {}
         self._scored: list[EffectSample] = []
         self._rules: dict[str, RuleEffectiveness] = {}
+        self._claimed_event_ids: set[str] = set()
 
     def on_applied(
         self,
@@ -80,9 +82,10 @@ class EffectTracker:
         rule_id: Optional[str],
         baseline_error_rate: float,
         baseline_help_rate: float,
-        baseline_success_count: int,
+        baseline_success_count: int = 0,
+        baseline_success_rate: float = 0.0,
     ) -> None:
-        if not result.success:
+        if not result.success or result.request_id in self._pending:
             return
         sample = EffectSample(
             request_id=result.request_id,
@@ -93,6 +96,7 @@ class EffectTracker:
             baseline_error_rate=baseline_error_rate,
             baseline_help_rate=baseline_help_rate,
             baseline_success_count=baseline_success_count,
+            baseline_success_rate=baseline_success_rate,
             session_id=result.session_id,
         )
         self._pending[result.request_id] = sample
@@ -126,13 +130,23 @@ class EffectTracker:
                 continue
 
             window_end = applied + timedelta(milliseconds=cfg.followup_window_ms)
-            post = [
-                e
-                for e in events
-                if e.user_id == user_id
-                and (_parse_ts(e.timestamp) or applied) > applied
-                and (_parse_ts(e.timestamp) or applied) <= window_end
-            ]
+            post = []
+            for event in events:
+                if event.id in self._claimed_event_ids:
+                    continue
+                if event.user_id != sample.user_id or event.interface_id != sample.interface_id:
+                    continue
+                if event.session_id != sample.session_id:
+                    continue
+                event_time = _parse_ts(event.timestamp)
+                if event_time is None:
+                    continue
+                if event_time.tzinfo is None:
+                    event_time = event_time.replace(tzinfo=timezone.utc)
+                if applied.tzinfo is None:
+                    applied = applied.replace(tzinfo=timezone.utc)
+                if applied < event_time <= window_end:
+                    post.append(event)
             if len(post) < cfg.min_events_for_score:
                 if age_ms > cfg.expire_after_ms:
                     sample.status = "expired"
@@ -154,13 +168,12 @@ class EffectTracker:
             # Positive score = rates went down / successes went up
             d_err = sample.baseline_error_rate - err_rate
             d_help = sample.baseline_help_rate - help_rate
-            d_suc = (successes - sample.baseline_success_count) / max(
-                sample.baseline_success_count + 1, 1
-            )
+            d_suc = (successes / n) - sample.baseline_success_rate
             score = cfg.w_error * d_err + cfg.w_help * d_help + cfg.w_success * d_suc
             sample.score = round(score, 4)
             sample.status = "scored"
             self._update_rule(sample)
+            self._claimed_event_ids.update(event.id for event in post)
             scored.append(sample)
             self._scored.append(sample)
             to_drop.append(rid)
@@ -192,8 +205,9 @@ class EffectTracker:
     def rule_effectiveness(self, rule_id: str) -> Optional[RuleEffectiveness]:
         return self._rules.get(rule_id)
 
-    def all_rule_scores(self) -> dict[str, float]:
-        return {rid: re.mean_score for rid, re in self._rules.items() if re.samples > 0}
+    def all_rule_scores(self) -> dict[str, dict[str, float | int]]:
+        return {rid: {"mean_score": re.mean_score, "samples": re.samples}
+                for rid, re in self._rules.items() if re.samples > 0}
 
     def pending_count(self) -> int:
         return len(self._pending)

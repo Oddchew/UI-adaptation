@@ -72,6 +72,12 @@ concept_ui_enabled <- concept_adaptable_ui_property;;
 concept_ui_opacity <- concept_adaptable_ui_property;;
 concept_ui_font_size <- concept_adaptable_ui_property;;
 concept_ui_tooltip <- concept_adaptable_ui_property;;
+concept_ui_background_color <- concept_adaptable_ui_property;;
+concept_ui_color <- concept_adaptable_ui_property;;
+concept_ui_border_width <- concept_adaptable_ui_property;;
+concept_ui_corner_radius <- concept_adaptable_ui_property;;
+concept_ui_padding <- concept_adaptable_ui_property;;
+concept_ui_margin <- concept_adaptable_ui_property;;
 
 concept_forbidden_adaptation_property
 => nrel_main_idtf:
@@ -81,6 +87,11 @@ concept_forbidden_adaptation_property
 concept_ui_text_value <- concept_forbidden_adaptation_property;;
 concept_ui_action_id <- concept_forbidden_adaptation_property;;
 concept_ui_name <- concept_forbidden_adaptation_property;;
+concept_ui_x <- concept_forbidden_adaptation_property;;
+concept_ui_y <- concept_forbidden_adaptation_property;;
+concept_ui_width <- concept_forbidden_adaptation_property;;
+concept_ui_height <- concept_forbidden_adaptation_property;;
+concept_ui_order <- concept_forbidden_adaptation_property;;
 
 // --- Связи design-time (синхрон с ostis-ui-editor docs/catalog.md) ---
 // contains: nrel_ui_contains (уже в abstract_ui_model / редакторе)

@@ -44,15 +44,25 @@ def normalize_model(model: dict, interface_id: str) -> dict:
             raise ValueError('ambiguous_component_id')
         type_by_id = {}
         for item in result['components']:
+            if not isinstance(item, dict):
+                raise ValueError('invalid_component')
             if item.get('typeId') not in COMPONENT_TYPES or not isinstance(item.get('props'), dict):
                 raise ValueError('invalid_component')
             type_by_id[item['id']] = item['typeId']
-            # action_id is only meaningful for button / select / menu_item
+            for key, value in item['props'].items():
+                if key not in PROPERTY_TYPES:
+                    raise ValueError('unknown_property')
+                expected = PROPERTY_TYPES[key]
+                allowed_types = expected if isinstance(expected, tuple) else (expected,)
+                if type(value) not in allowed_types:
+                    raise ValueError(f'invalid_property_value:{key}')
             if 'action_id' in item['props'] and not component_allows_action_id(item['typeId']):
                 raise ValueError('action_id_not_allowed')
         if not isinstance(result.get('links'), list):
             raise ValueError('invalid_links')
         for link in result['links']:
+            if not isinstance(link, dict):
+                raise ValueError('invalid_link')
             kind = link.get('kind')
             src, tgt = link.get('sourceId'), link.get('targetId')
             if kind not in LINK_KINDS or src not in ids or tgt not in ids:

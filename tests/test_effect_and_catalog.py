@@ -87,6 +87,7 @@ class EffectTrackerTest(unittest.TestCase):
         self.assertGreater(scored[0].score, 0)
         scores = tracker.all_rule_scores()
         self.assertIn("R_hint_after_2_errors", scores)
+        self.assertEqual(scores["R_hint_after_2_errors"]["samples"], 1)
 
 
 class LinkCatalogTest(unittest.TestCase):

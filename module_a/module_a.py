@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime
 from typing import Awaitable, Callable, Optional
 
 from .package_builder import PackageBuilder
@@ -99,6 +100,21 @@ class ModuleA:
             baseline_err = float(model.observation.recent_error_rate) if model else 0.0
             baseline_help = float(model.observation.recent_help_rate) if model else 0.0
             baseline_suc = int(model.counters.successful_actions) if model else 0
+            baseline_success_rate = 0.0
+            if model is not None:
+                baseline_events = await self._mgr.get_all_events(result.user_id)
+                baseline_events = [e for e in baseline_events
+                    if e.interface_id == result.interface_id and e.session_id == result.session_id]
+                parsed = []
+                for event in baseline_events:
+                    try:
+                        parsed.append((datetime.fromisoformat(event.timestamp.replace("Z", "+00:00")), event))
+                    except (TypeError, ValueError):
+                        continue
+                applied_at = datetime.fromisoformat(result.applied_at.replace("Z", "+00:00"))
+                before = [e for ts, e in parsed if ts <= applied_at]
+                if before:
+                    baseline_success_rate = sum(1 for e in before if e.event_type == EventType.SUCCESSFUL_ACTION) / len(before)
             rule_id = None
             if result.reason and result.reason.startswith("R_"):
                 rule_id = result.reason
@@ -111,6 +127,7 @@ class ModuleA:
                 baseline_error_rate=baseline_err,
                 baseline_help_rate=baseline_help,
                 baseline_success_count=baseline_suc,
+                baseline_success_rate=baseline_success_rate,
             )
         except Exception:
             logger.exception("ModuleA: effect registration error")

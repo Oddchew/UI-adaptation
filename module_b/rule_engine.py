@@ -151,20 +151,21 @@ def evaluate_declarative_rules(
         if not rule_matches(pkg, rule):
             continue
         # Skip rules that historically harm the user (mean effect score < -0.05, ≥3 samples)
-        mean = scores.get(rule.id)
-        if mean is not None and mean < -0.05:
-            # still allow if only 1-2 samples (noise); require evidence
-            # samples count is not in rule_scores map; treat strong negative only
-            if mean < -0.15:
-                continue
+        score_entry = scores.get(rule.id)
+        if isinstance(score_entry, dict):
+            mean = score_entry.get("mean_score")
+            samples = int(score_entry.get("samples", 0) or 0)
+        else:
+            mean = score_entry
+            samples = 0
         value, src_ids = _metric(pkg, rule)
         # Adjust priority: lower priority number = preferred.
         # Positive effectiveness lowers effective priority (boosts rule).
         adj = 0
-        if mean is not None:
-            if mean > 0.05:
+        if mean is not None and samples >= 3:
+            if float(mean) > 0.05:
                 adj = -1
-            elif mean < -0.05:
+            elif float(mean) < -0.05:
                 adj = 2
         matches.append(
             RuleMatch(
