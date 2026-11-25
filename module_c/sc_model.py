@@ -8,10 +8,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 import re
+import uuid
 from dataclasses import dataclass
 from typing import Any
 
-from .model import COMPONENT_TYPES, PROPERTY_TYPES, component_by_id
+from .catalog import COMPONENT_TYPES, PROPERTY_TYPES, SC_NREL_FOR_LINK_KIND, component_allows_action_id
+from .model import component_by_id
 
 
 class ScModelError(RuntimeError):
@@ -159,17 +161,30 @@ class ScUiModelAdapter:
                     if identifier in ids:
                         raise ScAmbiguousModel('duplicate component ID')
                     ids.add(identifier)
-                    props = {key: self._property(node, key)[0] for key in PROPERTY_TYPES}
-                    components.append({'id': identifier, 'typeId': self._component_type(node), 'props': props})
+                    type_id = self._component_type(node)
+                    props = {}
+                    for key in PROPERTY_TYPES:
+                        if key == 'action_id' and not component_allows_action_id(type_id):
+                            continue
+                        props[key] = self._property(node, key)[0]
+                    components.append({'id': identifier, 'typeId': type_id, 'props': props})
                     addresses.append((node, identifier))
                 links = []
-                for parent, parent_id in addresses:
-                    for child in self._relations(parent, 'nrel_ui_contains'):
-                        matches = [identifier for addr, identifier in addresses if addr == child]
-                        if len(matches) != 1:
-                            raise ScAmbiguousModel('contains target is outside interface or ambiguous')
-                        links.append({'id': f'link_{len(links) + 1}', 'kind': 'contains',
-                                      'sourceId': parent_id, 'targetId': matches[0]})
+                # contains / input_target / output_target (catalog link kinds)
+                for kind, nrel in SC_NREL_FOR_LINK_KIND.items():
+                    for parent, parent_id in addresses:
+                        for child in self._relations(parent, nrel):
+                            matches = [identifier for addr, identifier in addresses if addr == child]
+                            if len(matches) != 1:
+                                raise ScAmbiguousModel(
+                                    f'{kind} target is outside interface or ambiguous'
+                                )
+                            links.append({
+                                'id': f'link_{len(links) + 1}',
+                                'kind': kind,
+                                'sourceId': parent_id,
+                                'targetId': matches[0],
+                            })
                 return {'id': interface_id, 'title': self._property(interface, 'name')[0],
                         'components': components, 'links': links}
             return await asyncio.to_thread(read)
@@ -203,29 +218,51 @@ class ScUiModelAdapter:
 
 
 class ScModelRuntime:
-    """Apply one UI property in SC, then obtain confirmation from a renderer.
+    """Apply one UI property in SC via ExclusiveScWriter, then confirm with a renderer.
 
     A scoped request requires a resolver for an existing per-session SC model
     and a renderer that accepts user_id and session_id.
     """
-    def __init__(self, model_adapter: ScUiModelAdapter, renderer: Any, scope_resolver=None) -> None:
+    def __init__(
+        self,
+        model_adapter: ScUiModelAdapter,
+        renderer: Any,
+        scope_resolver=None,
+        writer: Any = None,
+        allow_shared_session_model: bool = False,
+    ) -> None:
         if not model_adapter.exclusive_writer:
             raise ScModelError('SC runtime requires an exclusive writer')
         self.model_adapter = model_adapter
         self.renderer = renderer
         self.scope_resolver = scope_resolver
+        self.allow_shared_session_model = allow_shared_session_model
+        # Prefer explicit ExclusiveScWriter; create one if omitted.
+        if writer is None:
+            from .sc_writer import ExclusiveScWriter
+            writer = ExclusiveScWriter(model_adapter)
+        self.writer = writer
         self._lock = asyncio.Lock()
+
+    def commands(self, user_id, session_id):
+        """Expose the renderer's pending browser commands to the HTTP bridge."""
+        return self.renderer.commands(user_id, session_id)
+
+    def acknowledge(self, token, success):
+        """Forward browser confirmation to the renderer waiting for activation."""
+        return self.renderer.acknowledge(token, success)
 
     async def activate(self, interface_id: str, model: dict, *, user_id=None, session_id=None) -> None:
         physical_id = interface_id
         if session_id:
-            if not self.scope_resolver:
+            if self.scope_resolver:
+                physical_id = self.scope_resolver(interface_id, user_id, session_id)
+                if inspect.isawaitable(physical_id):
+                    physical_id = await physical_id
+                if not isinstance(physical_id, str) or not physical_id:
+                    raise ScModelError('SC session-specific model is unavailable')
+            elif not self.allow_shared_session_model:
                 raise ScModelError('SC session-specific model routing is not configured')
-            physical_id = self.scope_resolver(interface_id, user_id, session_id)
-            if inspect.isawaitable(physical_id):
-                physical_id = await physical_id
-            if not isinstance(physical_id, str) or not physical_id:
-                raise ScModelError('SC session-specific model is unavailable')
             parameters = inspect.signature(self.renderer.activate).parameters
             if 'session_id' not in parameters or 'user_id' not in parameters:
                 raise ScModelError('renderer does not support session routing')
@@ -248,10 +285,42 @@ class ScModelRuntime:
                         changes.append((existing['id'], key, old, new))
             if len(changes) > 1:
                 raise ScModelError('SC runtime requires a single-property update')
+            rollback = None
             if changes:
                 component_id, key, old, new = changes[0]
-                await self.model_adapter.update_property(physical_id, component_id, key, old, new)
-            if session_id:
-                await self.renderer.activate(interface_id, model, user_id=user_id, session_id=session_id)
-            else:
-                await self.renderer.activate(interface_id, model)
+                request_id = f'sc-runtime:{physical_id}:{component_id}:{key}:{uuid.uuid4().hex}'
+                result = await self.writer.apply(
+                    interface_id=physical_id,
+                    component_id=component_id,
+                    property=key,
+                    expected=old,
+                    new_value=new,
+                    request_id=request_id,
+                    expected_version=self.writer.current_version(physical_id, component_id, key),
+                )
+                if not result.ok and result.error not in (None, 'no_change_required'):
+                    raise ScModelError(f'SC write failed: {result.error}')
+                if result.error != 'no_change_required':
+                    rollback = (component_id, key, old, new)
+            try:
+                if session_id:
+                    await self.renderer.activate(interface_id, model, user_id=user_id, session_id=session_id)
+                else:
+                    await self.renderer.activate(interface_id, model)
+            except Exception as render_error:
+                if rollback is not None:
+                    component_id, key, old, new = rollback
+                    rollback_result = await self.writer.apply(
+                        interface_id=physical_id,
+                        component_id=component_id,
+                        property=key,
+                        expected=new,
+                        new_value=old,
+                        request_id=f'{request_id}:rollback',
+                        expected_version=result.new_version,
+                    )
+                    if not rollback_result.ok:
+                        raise ScModelError(
+                            f'renderer failed and SC rollback failed; recovery required: {rollback_result.error}'
+                        ) from render_error
+                raise ScModelError('renderer failed; SC update was rolled back') from render_error

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from datetime import datetime, timezone
 from typing import Awaitable, Callable, Optional
 
 from .package_builder import PackageBuilder
@@ -20,6 +21,7 @@ from .types import (
 )
 from .user_model_manager import UserModelManager
 from .validation import validate_interaction_event
+from .effect_tracker import EffectTracker, EffectTrackerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +33,7 @@ class ModuleA:
         self,
         storage: Optional[IStorage] = None,
         config: Optional[ModuleAConfig] = None,
+        effect_tracker: Optional[EffectTracker] = None,
     ) -> None:
         self.config = config or DEFAULT_CONFIG
         self._storage = storage or InMemoryStorage(self.config)
@@ -40,6 +43,7 @@ class ModuleA:
         self._periodic_tasks: dict[str, asyncio.Task] = {}
         self._interface_by_user: dict[str, str] = {}
         self._disposed = False
+        self.effect_tracker = effect_tracker or EffectTracker(EffectTrackerConfig())
 
     def set_package_handler(self, handler: PackageHandler) -> None:
         self._on_package = handler
@@ -51,6 +55,19 @@ class ModuleA:
         self._interface_by_user[event.user_id] = event.interface_id
 
         await self._mgr.process_event(event)
+
+        # Score pending adaptations when enough post-events accumulate
+        try:
+            events = await self._mgr.get_all_events(event.user_id)
+            scored = self.effect_tracker.on_events(event.user_id, events)
+            if scored:
+                model = await self._mgr.get_model(event.user_id)
+                if model is not None:
+                    model.rule_scores = self.effect_tracker.all_rule_scores(event.user_id)
+                    model.effect_summary = self.effect_tracker.snapshot_for_model(event.user_id)
+                    await self._storage.save_user_model(model)
+        except Exception:
+            logger.exception("ModuleA: effect scoring error")
 
         should_send = False
         trigger = PackageTrigger.THRESHOLD
@@ -77,6 +94,65 @@ class ModuleA:
         if self._disposed:
             raise RuntimeError("ModuleA is disposed")
         await self._mgr.record_adaptation_result(result)
+        # Register applied adaptation for later effect evaluation
+        try:
+            model = await self._mgr.get_model(result.user_id)
+            baseline_err = 0.0
+            baseline_help = 0.0
+            baseline_suc = 0
+            baseline_success_rate = 0.0
+            if model is not None:
+                baseline_events = await self._mgr.get_all_events(result.user_id)
+                baseline_events = [e for e in baseline_events
+                    if e.interface_id == result.interface_id and e.session_id == result.session_id]
+                applied_at = datetime.fromisoformat(result.applied_at.replace("Z", "+00:00"))
+                if applied_at.tzinfo is None:
+                    applied_at = applied_at.replace(tzinfo=timezone.utc)
+                try:
+                    window_start = datetime.fromisoformat(
+                        model.observation.window_start.replace("Z", "+00:00")
+                    )
+                except (AttributeError, TypeError, ValueError):
+                    logger.warning(
+                        "ModuleA: invalid observation window_start for user %s; "
+                        "adaptation effect will not be scored",
+                        result.user_id,
+                    )
+                    return
+                if window_start.tzinfo is None:
+                    window_start = window_start.replace(tzinfo=timezone.utc)
+                before = []
+                for event in baseline_events:
+                    try:
+                        event_time = datetime.fromisoformat(event.timestamp.replace("Z", "+00:00"))
+                        if event_time.tzinfo is None:
+                            event_time = event_time.replace(tzinfo=timezone.utc)
+                    except (TypeError, ValueError):
+                        continue
+                    if window_start <= event_time <= applied_at:
+                        before.append(event)
+                if before:
+                    total = len(before)
+                    baseline_err = sum(1 for e in before if e.event_type == EventType.ERROR) / total
+                    baseline_help = sum(1 for e in before if e.event_type == EventType.HELP_REQUEST) / total
+                    baseline_success_rate = sum(1 for e in before if e.event_type == EventType.SUCCESSFUL_ACTION) / total
+                    baseline_suc = sum(1 for e in before if e.event_type == EventType.SUCCESSFUL_ACTION)
+            rule_id = None
+            if result.reason and result.reason.startswith("R_"):
+                rule_id = result.reason
+            # Prefer explicit rule from reason / status fields when present
+            if getattr(result, "status", None) and isinstance(result.status, str) and result.status.startswith("R_"):
+                rule_id = result.status
+            self.effect_tracker.on_applied(
+                result,
+                rule_id=rule_id or result.reason,
+                baseline_error_rate=baseline_err,
+                baseline_help_rate=baseline_help,
+                baseline_success_count=baseline_suc,
+                baseline_success_rate=baseline_success_rate,
+            )
+        except Exception:
+            logger.exception("ModuleA: effect registration error")
 
     async def force_send_package(self, user_id: str, interface_id: str) -> PackageAtoB:
         if self._disposed:

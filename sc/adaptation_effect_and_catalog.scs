@@ -1,0 +1,118 @@
+// =============================================================================
+// Расширение онтологии: оценка эффекта адаптации + привязка к каталогу UI
+// Согласовано с ostis-ui-editor docs/catalog.md и module_c/catalog.py
+// =============================================================================
+
+// --- Оценка эффекта ---
+concept_adaptation_effect
+=> nrel_main_idtf:
+	[оценка эффекта адаптации] (* <- lang_ru;; *);
+	[adaptation effect] (* <- lang_en;; *);
+<- sc_node_class;;
+
+nrel_effect_request
+=> nrel_main_idtf: [запрос, к которому относится оценка] (* <- lang_ru;; *);;
+
+nrel_effect_rule
+=> nrel_main_idtf: [правило адаптации] (* <- lang_ru;; *);;
+
+nrel_effect_score
+=> nrel_main_idtf: [числовая оценка эффекта] (* <- lang_ru;; *);;
+
+nrel_effect_baseline_error_rate
+=> nrel_main_idtf: [базовая доля ошибок до адаптации] (* <- lang_ru;; *);;
+
+nrel_effect_followup_error_rate
+=> nrel_main_idtf: [доля ошибок после адаптации] (* <- lang_ru;; *);;
+
+nrel_rule_effectiveness
+=> nrel_main_idtf:
+	[эффективность правила адаптации] (* <- lang_ru;; *);
+	[rule effectiveness] (* <- lang_en;; *);;
+
+concept_adaptation_rule
+=> nrel_main_idtf:
+	[правило адаптации UI] (* <- lang_ru;; *);
+	[UI adaptation rule] (* <- lang_en;; *);
+<- sc_node_class;;
+
+nrel_rule_priority
+=> nrel_main_idtf: [приоритет правила] (* <- lang_ru;; *);;
+
+nrel_rule_enabled
+=> nrel_main_idtf: [правило включено] (* <- lang_ru;; *);;
+
+nrel_rule_target_component
+=> nrel_main_idtf: [целевой компонент правила] (* <- lang_ru;; *);;
+
+nrel_rule_target_property
+=> nrel_main_idtf: [целевое свойство правила] (* <- lang_ru;; *);;
+
+// --- Индексы модели пользователя (расширение) ---
+nrel_struggle_index
+=> nrel_main_idtf: [индекс затруднений пользователя] (* <- lang_ru;; *);;
+
+nrel_engagement_index
+=> nrel_main_idtf: [индекс вовлечённости пользователя] (* <- lang_ru;; *);;
+
+nrel_rule_scores
+=> nrel_main_idtf: [оценки эффективности правил для пользователя] (* <- lang_ru;; *);;
+
+// --- Каталог (ссылки на design-time, не дублируют abstract_ui_model) ---
+// Типы и свойства: concept_ui_* / nrel_ui_* задаются редактором.
+// Здесь фиксируем подмножество свойств, допускаемых к адаптации.
+
+concept_adaptable_ui_property
+=> nrel_main_idtf:
+	[адаптируемое свойство UI] (* <- lang_ru;; *);
+<- sc_node_class;;
+
+concept_ui_visible <- concept_adaptable_ui_property;;
+concept_ui_enabled <- concept_adaptable_ui_property;;
+concept_ui_opacity <- concept_adaptable_ui_property;;
+concept_ui_font_size <- concept_adaptable_ui_property;;
+concept_ui_tooltip <- concept_adaptable_ui_property;;
+concept_ui_background_color <- concept_adaptable_ui_property;;
+concept_ui_color <- concept_adaptable_ui_property;;
+concept_ui_border_width <- concept_adaptable_ui_property;;
+concept_ui_corner_radius <- concept_adaptable_ui_property;;
+concept_ui_padding <- concept_adaptable_ui_property;;
+concept_ui_margin <- concept_adaptable_ui_property;;
+
+concept_forbidden_adaptation_property
+=> nrel_main_idtf:
+	[свойство UI, запрещённое для авто-адаптации] (* <- lang_ru;; *);
+<- sc_node_class;;
+
+concept_ui_text_value <- concept_forbidden_adaptation_property;;
+concept_ui_action_id <- concept_forbidden_adaptation_property;;
+concept_ui_name <- concept_forbidden_adaptation_property;;
+concept_ui_x <- concept_forbidden_adaptation_property;;
+concept_ui_y <- concept_forbidden_adaptation_property;;
+concept_ui_width <- concept_forbidden_adaptation_property;;
+concept_ui_height <- concept_forbidden_adaptation_property;;
+concept_ui_order <- concept_forbidden_adaptation_property;;
+
+// --- Связи design-time (синхрон с ostis-ui-editor docs/catalog.md) ---
+// contains: nrel_ui_contains (уже в abstract_ui_model / редакторе)
+// input_target / output_target: триггер (button|select|menu_item) → цель
+
+nrel_ui_input_target
+=> nrel_main_idtf:
+	[цель ввода UI] (* <- lang_ru;; *);
+	[UI input target] (* <- lang_en;; *);;
+
+nrel_ui_output_target
+=> nrel_main_idtf:
+	[цель вывода UI] (* <- lang_ru;; *);
+	[UI output target] (* <- lang_en;; *);;
+
+// action_id допустим только у button, select, menu_item
+concept_ui_action_component
+=> nrel_main_idtf:
+	[компонент UI с action_id] (* <- lang_ru;; *);
+<- sc_node_class;;
+
+concept_ui_button <- concept_ui_action_component;;
+concept_ui_select <- concept_ui_action_component;;
+concept_ui_menu_item <- concept_ui_action_component;;

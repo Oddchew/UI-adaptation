@@ -1,22 +1,22 @@
-"""Platform-neutral snapshot of the SC UI model and adaptation policy."""
+"""Platform-neutral snapshot of the SC UI model and adaptation policy.
+
+PROPERTY_TYPES / COMPONENT_TYPES come from catalog.py (aligned with
+ostis-ui-editor docs/catalog.md).
+"""
 from __future__ import annotations
 
 import copy
 from typing import Any
 
-PROPERTY_TYPES = {
-    'name': str, 'x': (int, float), 'y': (int, float), 'width': (int, float),
-    'height': (int, float), 'order': (int, float), 'visible': bool, 'enabled': bool,
-    'opacity': (int, float), 'text_value': str, 'tooltip': str, 'action_id': str,
-    'background_color': str, 'color': str, 'border_color': str,
-    'border_width': (int, float), 'border_style': str, 'corner_radius': (int, float),
-    'font_size': (int, float), 'font_weight': str, 'text_align': str,
-    'padding': (int, float), 'margin': (int, float), 'min_width': (int, float),
-    'min_height': (int, float), 'max_width': (int, float), 'max_height': (int, float),
-}
-COMPONENT_TYPES = frozenset(('image', 'sound', 'text', 'divider', 'spacer', 'menu',
-    'menu_bar', 'list', 'scroll', 'window', 'text_field', 'text_area', 'slider',
-    'select', 'button', 'menu_item'))
+from .catalog import (
+    ADAPTABLE_PROPERTIES,
+    COMPONENT_TYPES,
+    LINK_KINDS,
+    PROPERTY_TYPES,
+    component_allows_action_id,
+    default_policy_allowed,
+    validate_link,
+)
 
 
 def tutor_model(interface_id: str = 'python_tutor_model') -> dict[str, Any]:
@@ -39,15 +39,41 @@ def normalize_model(model: dict, interface_id: str) -> dict:
         result = copy.deepcopy(model)
         if result.get('id') != interface_id:
             raise ValueError('interface_id_mismatch')
+        if not isinstance(result.get('components'), list) or not isinstance(result.get('links'), list):
+            raise ValueError('invalid_model_structure')
+        if any(not isinstance(item, dict) for item in result['components']):
+            raise ValueError('invalid_component')
         ids = [item.get('id') for item in result['components']]
         if any(not isinstance(x, str) or not x for x in ids) or len(ids) != len(set(ids)):
             raise ValueError('ambiguous_component_id')
-        if any(item.get('typeId') not in COMPONENT_TYPES or not isinstance(item.get('props'), dict) for item in result['components']):
-            raise ValueError('invalid_component')
+        type_by_id = {}
+        for item in result['components']:
+            if not isinstance(item, dict):
+                raise ValueError('invalid_component')
+            if item.get('typeId') not in COMPONENT_TYPES or not isinstance(item.get('props'), dict):
+                raise ValueError('invalid_component')
+            type_by_id[item['id']] = item['typeId']
+            for key, value in item['props'].items():
+                if key not in PROPERTY_TYPES:
+                    raise ValueError('unknown_property')
+                expected = PROPERTY_TYPES[key]
+                allowed_types = expected if isinstance(expected, tuple) else (expected,)
+                if type(value) not in allowed_types:
+                    raise ValueError(f'invalid_property_value:{key}')
+            if 'action_id' in item['props'] and not component_allows_action_id(item['typeId']):
+                raise ValueError('action_id_not_allowed')
         if not isinstance(result.get('links'), list):
             raise ValueError('invalid_links')
-        if any(link.get('kind') != 'contains' or link.get('sourceId') not in ids or link.get('targetId') not in ids for link in result['links']):
-            raise ValueError('invalid_link')
+        for link in result['links']:
+            if not isinstance(link, dict):
+                raise ValueError('invalid_link')
+            kind = link.get('kind')
+            src, tgt = link.get('sourceId'), link.get('targetId')
+            if kind not in LINK_KINDS or src not in ids or tgt not in ids:
+                raise ValueError('invalid_link')
+            err = validate_link(kind, type_by_id[src], type_by_id[tgt])
+            if err:
+                raise ValueError(err)
         return result
     result = tutor_model(interface_id)
     for component in result['components']:
@@ -75,10 +101,23 @@ def display_state(model: dict) -> dict:
 
 
 class AdaptationPolicy:
-    """Explicit per-interface access; user data is never a writable UI property."""
+    """Explicit per-interface access; user data is never a writable UI property.
+
+    Default policy for the tutor demo keeps the previous narrow allow-list.
+    For interfaces loaded from design-time, use from_catalog(component_ids).
+    """
+
     def __init__(self, allowed: dict[str, set[str]] | None = None) -> None:
         self.allowed = allowed if allowed is not None else {
             'hints_panel': {'visible'}, 'history_content': {'visible'}}
+
+    @classmethod
+    def from_catalog(cls, component_ids: list[str], extra: dict[str, set[str]] | None = None) -> "AdaptationPolicy":
+        allowed = default_policy_allowed(component_ids)
+        if extra:
+            for cid, props in extra.items():
+                allowed.setdefault(cid, set()).update(props & ADAPTABLE_PROPERTIES)
+        return cls(allowed)
 
     def validate(self, component: dict, prop: str, value: Any) -> str | None:
         if prop not in PROPERTY_TYPES or prop not in self.allowed.get(component['id'], set()):

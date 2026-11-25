@@ -122,6 +122,7 @@ class UserModelManager:
         self._update_observation(model, all_events)
         self._update_cold_start_and_completeness(model)
         self._update_experience(model)
+        self._update_struggle_engagement(model)
 
         model.model_version += 1
         await self.storage.save_user_model(model)
@@ -169,6 +170,16 @@ class UserModelManager:
         if model.preferences.theme is not None or model.preferences.show_tooltips is not None:
             score += 0.2
         model.completeness = min(1.0, score)
+
+    def _update_struggle_engagement(self, model: UserModel) -> None:
+        """Composite indices for richer B decisions (0..1)."""
+        obs = model.observation
+        err = float(obs.recent_error_rate or 0.0)
+        help_r = float(obs.recent_help_rate or 0.0)
+        model.struggle_index = max(0.0, min(1.0, 0.6 * err + 0.4 * help_r))
+        total = max(model.counters.total_events, 1)
+        success_rate = model.counters.successful_actions / total
+        model.engagement_index = max(0.0, min(1.0, success_rate))
 
     def _update_experience(self, model: UserModel) -> None:
         c = model.counters
