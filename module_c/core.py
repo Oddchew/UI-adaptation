@@ -378,6 +378,7 @@ class ModuleC:
                 else:
                     candidate = copy.deepcopy(current[1])
                     component_by_id(candidate, command.target_element_id)['props'][command.property] = command.new_value
+                    sc_write_applied = False
                     try:
                         await self.repository.prepare(command.request_id, key, {'command': asdict(command), 'version_before': before})
                         # Optional SC dual-write before screen activation (skipped when
@@ -393,6 +394,7 @@ class ModuleC:
                             )
                             if not sc_result.ok and sc_result.error not in (None, 'no_change_required'):
                                 raise RuntimeError(f'sc_write:{sc_result.error}')
+                            sc_write_applied = sc_result.ok and sc_result.error != 'no_change_required'
                         await asyncio.wait_for(self._activate(command, candidate), self.timeout)
                         response.status = 'applied'
                         response.duration_ms = int((time.monotonic() - started) * 1000)
@@ -407,6 +409,24 @@ class ModuleC:
                             response.failure_reason = err
                         else:
                             response.failure_reason = 'application_failed'
+                        if sc_write_applied:
+                            try:
+                                rollback = await self.sc_writer.apply(
+                                    interface_id=command.interface_id,
+                                    component_id=command.target_element_id,
+                                    property=command.property,
+                                    expected=command.new_value,
+                                    new_value=command.old_value,
+                                    request_id=f'{command.request_id}:rollback',
+                                )
+                                if not rollback.ok:
+                                    raise RuntimeError(rollback.error or 'unknown_error')
+                            except Exception as rollback_error:
+                                response.recovery_required = True
+                                response.failure_reason = (
+                                    f'{response.failure_reason}; sc_rollback_failed:{rollback_error}'
+                                )
+                                await self.repository.set_blocked(key, True)
                         try:
                             await asyncio.wait_for(self._activate(command, current[1]), self.timeout)
                         except Exception:
