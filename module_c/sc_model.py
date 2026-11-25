@@ -7,7 +7,9 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import os
 import re
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -275,8 +277,32 @@ class ScModelRuntime:
             parameters = inspect.signature(self.renderer.activate).parameters
             if 'session_id' not in parameters or 'user_id' not in parameters:
                 raise ScModelError('renderer does not support session routing')
+        debug = os.environ.get("UI_RUNTIME_DEBUG") == "1"
+        started = time.monotonic()
+        if debug:
+            print(
+                "[debug][SC_RUNTIME] waiting_for_lock",
+                "interface=", interface_id,
+                "physical=", physical_id,
+                "user=", user_id,
+                "session=", session_id,
+                flush=True,
+            )
         async with self._lock:
+            if debug:
+                print(
+                    "[debug][SC_RUNTIME] read_model_start",
+                    "elapsed_ms=", int((time.monotonic() - started) * 1000),
+                    flush=True,
+                )
             current = await self.model_adapter.read_model(physical_id)
+            if debug:
+                print(
+                    "[debug][SC_RUNTIME] read_model_done",
+                    "elapsed_ms=", int((time.monotonic() - started) * 1000),
+                    "components=", len(current.get("components", [])),
+                    flush=True,
+                )
             def links(snapshot):
                 return {(link['kind'], link['sourceId'], link['targetId']) for link in snapshot['links']}
             if model['id'] != interface_id or current['title'] != model['title'] or links(current) != links(model):
@@ -298,6 +324,14 @@ class ScModelRuntime:
             if changes:
                 component_id, key, old, new = changes[0]
                 request_id = f'sc-runtime:{physical_id}:{component_id}:{key}:{uuid.uuid4().hex}'
+                if debug:
+                    print(
+                        "[debug][SC_RUNTIME] writer_start",
+                        "component=", component_id,
+                        "property=", key,
+                        "elapsed_ms=", int((time.monotonic() - started) * 1000),
+                        flush=True,
+                    )
                 result = await self.writer.apply(
                     interface_id=physical_id,
                     component_id=component_id,
@@ -307,15 +341,36 @@ class ScModelRuntime:
                     request_id=request_id,
                     expected_version=self.writer.current_version(physical_id, component_id, key),
                 )
+                if debug:
+                    print(
+                        "[debug][SC_RUNTIME] writer_done",
+                        "ok=", result.ok,
+                        "error=", result.error,
+                        "duration_ms=", result.duration_ms,
+                        "elapsed_ms=", int((time.monotonic() - started) * 1000),
+                        flush=True,
+                    )
                 if not result.ok and result.error not in (None, 'no_change_required'):
                     raise ScModelError(f'SC write failed: {result.error}')
                 if result.error != 'no_change_required':
                     rollback = (component_id, key, old, new)
             try:
+                if debug:
+                    print(
+                        "[debug][SC_RUNTIME] renderer_start",
+                        "elapsed_ms=", int((time.monotonic() - started) * 1000),
+                        flush=True,
+                    )
                 if session_id:
                     await self.renderer.activate(interface_id, model, user_id=user_id, session_id=session_id)
                 else:
                     await self.renderer.activate(interface_id, model)
+                if debug:
+                    print(
+                        "[debug][SC_RUNTIME] renderer_done",
+                        "elapsed_ms=", int((time.monotonic() - started) * 1000),
+                        flush=True,
+                    )
             except Exception as render_error:
                 if rollback is not None:
                     component_id, key, old, new = rollback
