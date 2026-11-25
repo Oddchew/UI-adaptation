@@ -48,7 +48,7 @@ def _load_rules(source: RulesSource) -> list[AdaptationRule]:
             data = data["rules"]
         return rules_from_jsonable(list(data))
     if not source:
-        return list(DEFAULT_RULES)
+        return []
     first = source[0]
     if isinstance(first, AdaptationRule):
         return list(source)  # type: ignore[arg-type]
