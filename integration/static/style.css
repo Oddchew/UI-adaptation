@@ -17,17 +17,14 @@ body.theme-dark{color-scheme:dark;--bg:#18211d;--surface:#212e26;--ink:#edf4ed;-
 
 /* Generic SC UI model renderer */
 .sc-interface-root {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 12px;
+  position: relative;
+  display: block;
   min-height: 180px;
-  padding: 16px;
-  border: 1px solid var(--border, #d8dee8);
-  border-radius: 12px;
-  background: var(--surface, #fff);
+  padding: 0;
+  overflow: auto;
 }
-.sc-ui-component { box-sizing: border-box; max-width: 100%; }
+.sc-ui-component { position: absolute; box-sizing: border-box; max-width: none; }
+.sc-ui-text { margin: 0; white-space: pre-wrap; }
 .sc-ui-window, .sc-ui-scroll, .sc-ui-menu, .sc-ui-menu_bar {
   display: flex;
   flex-direction: column;
