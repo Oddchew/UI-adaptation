@@ -152,17 +152,22 @@ class ModuleB:
                 reject_message="ручной режим / manual_override — авто-команды запрещены",
             )
 
+        explicit_action = bool(
+            last
+            and last.event_type.value == 'successful_action'
+            and last.action_id
+        )
         n_events = len(pkg.interaction_events)
         if n_events == 0:
             n_events = int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
-        if n_events < cfg.MIN_EVENTS_IN_WINDOW:
+        if not explicit_action and n_events < cfg.MIN_EVENTS_IN_WINDOW:
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.INSUFFICIENT_DATA,
                 reject_message=f"событий в окне {n_events} < {cfg.MIN_EVENTS_IN_WINDOW}",
             )
 
-        if pkg.model_snapshot.is_cold_start and n_events < 2:
+        if not explicit_action and pkg.model_snapshot.is_cold_start and n_events < 2:
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.COLD_START,
