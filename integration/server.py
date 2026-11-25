@@ -130,9 +130,11 @@ async def _bootstrap() -> None:
             print(f"[module-b] rules file: {rules_src}")
         else:
             print("[module-b] built-in DEFAULT_RULES")
-    _module_b = ModuleB(rules=rules_src)
+    _module_b = ModuleB(rules=rules_src if rules_src else ([] if USE_SC_C else None))
     _repository = SQLiteRepository(os.environ.get('MODULE_C_DB', str(ROOT / 'module_c.sqlite3')))
-    if not await _repository.current('python_tutor_model'):
+    # The SC-backed path discovers each interface by interface_id on demand.
+    # The Python tutor seed is retained only for the standalone legacy demo.
+    if not USE_SC_C and not await _repository.current('python_tutor_model'):
         _repository.register('python_tutor_model', default_model())
     browser = BrowserRuntime()
     _runtime = browser
@@ -220,6 +222,21 @@ def _start_async_loop() -> None:
         time.sleep(0.05)
 
 
+async def _ensure_interface(interface_id: str) -> None:
+    """Lazily import an interface snapshot from SC into Module C's version store."""
+    if not isinstance(interface_id, str) or not interface_id.strip():
+        raise ValueError("interface_id_required")
+    if _repository is None:
+        raise RuntimeError("repository_not_ready")
+    if await _repository.current(interface_id):
+        return
+    adapter = getattr(_runtime, "model_adapter", None) if USE_SC_C else None
+    if adapter is None:
+        raise KeyError(f"unknown interface: {interface_id}")
+    model = await adapter.read_model(interface_id)
+    _repository.register(interface_id, model)
+
+
 def _json_response(handler: BaseHTTPRequestHandler, code: int, payload: Any) -> None:
     body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
     handler.send_response(code)
@@ -283,8 +300,25 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/ui-state":
             assert _module_c is not None
             query = parse_qs(parsed.query)
-            current = _run(_module_c.state('python_tutor_model', query.get('user_id', [None])[0], query.get('session_id', [None])[0]))
-            _json_response(self, 200, {"ui": display_state(current[1]), "version": current[0], "packages": _packages[-10:]})
+            interface_id = query.get('interface_id', [None])[0]
+            if not interface_id and not USE_SC_C:
+                interface_id = 'python_tutor_model'
+            try:
+                _run(_ensure_interface(interface_id))
+                current = _run(_module_c.state(interface_id, query.get('user_id', [None])[0], query.get('session_id', [None])[0]))
+                if current is None:
+                    raise KeyError(f"unknown interface: {interface_id}")
+                _json_response(self, 200, {
+                    "interface_id": interface_id,
+                    "model": current[1],
+                    "ui": display_state(current[1]),
+                    "version": current[0],
+                    "packages": _packages[-10:],
+                })
+            except (ValueError, KeyError) as exc:
+                _json_response(self, 404, {"error": str(exc)})
+            except Exception as exc:
+                _json_response(self, 502, {"error": str(exc)})
             return
 
         if path == '/api/runtime/pending':
@@ -364,7 +398,7 @@ class Handler(BaseHTTPRequestHandler):
             event = InteractionEvent(
                 id=data.get("id") or f"e_{uuid.uuid4().hex[:8]}",
                 user_id=data.get("user_id") or "user_demo",
-                interface_id=data.get("interface_id") or "ui_demo",
+                interface_id=data.get("interface_id") or (None if USE_SC_C else "python_tutor_model"),
                 timestamp=data.get("timestamp") or _now(),
                 event_type=et,
                 session_id=data.get('session_id'),
@@ -377,6 +411,18 @@ class Handler(BaseHTTPRequestHandler):
                 new_value=data.get("new_value"),
                 action_id=data.get("action_id"),
             )
+
+            if not event.interface_id:
+                _json_response(self, 400, {"error": "interface_id_required"})
+                return
+            try:
+                _run(_ensure_interface(event.interface_id))
+            except (ValueError, KeyError) as exc:
+                _json_response(self, 404, {"error": str(exc)})
+                return
+            except Exception as exc:
+                _json_response(self, 502, {"error": str(exc)})
+                return
 
             async def handle():
                 await _module_a.handle_event(event)
