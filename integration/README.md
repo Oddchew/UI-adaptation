@@ -109,6 +109,6 @@ Runtime строит DOM по `components` и связям `contains`, без п
 
 Для `image`/`sound` поле `text_value` трактуется как URL или относительный путь, если оно начинается с `http://`, `https://`, `/`, `./` или `../`. Если в нём находится SC ID ресурса, runtime показывает нейтральную заглушку с этим ID: разрешение SC ID в файл требует отдельного resource resolver и здесь не имитируется.
 
-Для `select` варианты могут быть дочерними `menu_item` или `text` через `contains`. При выборе отправляется `successful_action` с `action_id` и `selected_value`.
+Для `select` варианты могут быть дочерними `menu_item` или `text` через `contains`. При выборе отправляется `successful_action` с `action_id`; выбранное значение и значения связанных через `input_target` полей передаются в `new_value` события.
 
 Связи `input_target` читаются от action-компонента к полям ввода. При нажатии на `button`/`menu_item` текущие значения связанных полей передаются в событии как `property: "input_values"` и `new_value: {component_id: value}`. Связи `output_target` сохраняются в DOM как `data-output-targets`; выполнение прикладного действия и запись его результата в целевые компоненты пока остаются ответственностью отдельного action handler.
