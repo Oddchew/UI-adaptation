@@ -115,10 +115,6 @@ class OutputTargetActionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(restored[0].action.target_element_id, "$output_target")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
     async def test_action_flows_from_module_a_through_b_and_c(self):
         from datetime import datetime, timezone
 
@@ -194,3 +190,8 @@ if __name__ == "__main__":
             self.assertEqual(runtime.states["calendar"]["components"][1]["props"]["visible"], True)
         finally:
             module_a.dispose()
+
+
+
+if __name__ == "__main__":
+    unittest.main()
