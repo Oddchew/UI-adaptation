@@ -91,12 +91,7 @@ class ModuleBConfig:
     RULE_COLLAPSE_HISTORY: str = "R_collapse_history_on_help_without_check"
     HELP_FOR_COLLAPSE: int = 3
 
-    FORBIDDEN_TARGETS: tuple[str, ...] = (
-        "code_editor",
-        "code_editor.content",
-        "task_stage",
-        "results_criteria",
-    )
+    FORBIDDEN_TARGETS: tuple[str, ...] = ()
 
     MAX_APPLY_MS: int = 2000
     ANTI_FLICKER: bool = True
