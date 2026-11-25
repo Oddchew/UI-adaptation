@@ -122,7 +122,7 @@ class EffectTrackerTest(unittest.TestCase):
                 user_id=user_id,
                 interface_id="ui",
                 event_type=event_type,
-                timestamp=(applied_at + timedelta(milliseconds=200)).isoformat(),
+                timestamp=(applied_at + timedelta(milliseconds=50)).isoformat(),
             )
             tracker.on_events(
                 user_id,
