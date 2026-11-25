@@ -159,29 +159,55 @@ class ScUiModelAdapter:
         """Read an editor-compatible snapshot. Does not create SC keynodes."""
         async with self._lock:
             def read():
+                debug = os.environ.get("UI_RUNTIME_DEBUG") == "1"
+                started = time.monotonic()
+
+                def trace(stage, **fields):
+                    if debug:
+                        details = " ".join(f"{key}={value}" for key, value in fields.items())
+                        print(
+                            "[debug][SC_READ]",
+                            stage,
+                            details,
+                            "elapsed_ms=", int((time.monotonic() - started) * 1000),
+                            flush=True,
+                        )
+
+                trace("interface_start")
                 interface = self._interface(interface_id)
+                trace("interface_done")
                 nodes = self._relations(interface, 'nrel_ui_has_component')
+                trace("components_found", count=len(nodes))
                 components = []
                 addresses = []
                 ids = set()
-                for node in nodes:
+                for index, node in enumerate(nodes):
+                    component_started = time.monotonic()
                     identifier = self._id(node)
                     if identifier in ids:
                         raise ScAmbiguousModel('duplicate component ID')
                     ids.add(identifier)
                     type_id = self._component_type(node)
                     props = {}
+                    trace("component_start", index=index, component=identifier, type=type_id)
                     for key in PROPERTY_TYPES:
                         if key == 'action_id' and not component_allows_action_id(type_id):
                             continue
                         value, _ = self._property(node, key, required=False)
                         if value is not None:
                             props[key] = value
+                    trace(
+                        "component_done",
+                        component=identifier,
+                        properties=len(props),
+                        duration_ms=int((time.monotonic() - component_started) * 1000),
+                    )
                     components.append({'id': identifier, 'typeId': type_id, 'props': props})
                     addresses.append((node, identifier))
                 links = []
                 # contains / input_target / output_target (catalog link kinds)
                 for kind, nrel in SC_NREL_FOR_LINK_KIND.items():
+                    trace("links_start", kind=kind)
                     for parent, parent_id in addresses:
                         for child in self._relations(parent, nrel):
                             matches = [identifier for addr, identifier in addresses if addr == child]
@@ -195,7 +221,9 @@ class ScUiModelAdapter:
                                 'sourceId': parent_id,
                                 'targetId': matches[0],
                             })
+                    trace("links_done", kind=kind)
                 title, _ = self._property(interface, 'name', required=False)
+                trace("model_done", components=len(components), links=len(links))
                 return {'id': interface_id, 'title': title or interface_id,
                         'components': components, 'links': links}
             return await asyncio.to_thread(read)
