@@ -112,3 +112,23 @@ Runtime строит DOM по `components` и связям `contains`, без п
 Для `select` варианты могут быть дочерними `menu_item` или `text` через `contains`. При выборе отправляется `successful_action` с `action_id`; выбранное значение и значения связанных через `input_target` полей передаются в `new_value` события.
 
 Связи `input_target` читаются от action-компонента к полям ввода. При нажатии на `button`/`menu_item` текущие значения связанных полей передаются в событии как `property: "input_values"` и `new_value: {component_id: value}`. Связи `output_target` сохраняются в DOM как `data-output-targets`; выполнение прикладного действия и запись его результата в целевые компоненты пока остаются ответственностью отдельного action handler.
+
+### События интерактивных SC-компонентов
+
+Универсальный renderer отправляет события без изменения SC-модели содержимого:
+
+- `focus` / `blur` — фокус и потеря фокуса текстовым полем, областью, ползунком или списком выбора.
+- `successful_action` с `property: "input_value"` — изменение значения поля, области, ползунка или списка выбора; `new_value` содержит новое значение.
+- `successful_action` с `property: "action_context"` — нажатие кнопки/пункта меню, связанного с `input_target` и/или `output_target`.
+
+Для действия с входными/выходными связями `new_value` имеет структуру:
+
+```json
+{
+  "input_values": {"component_id": "current value"},
+  "output_target_ids": ["component_id"]
+}
+```
+
+Для изменения связанного элемента `new_value` содержит его `value`, текущие `input_values` и `output_target_ids`.
+Эти данные фиксируют контекст взаимодействия для Module A; сами по себе они не меняют `text_value`, `action_id` или другие свойства SC-модели.
