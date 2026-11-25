@@ -229,12 +229,14 @@ class ScModelRuntime:
         renderer: Any,
         scope_resolver=None,
         writer: Any = None,
+        allow_shared_session_model: bool = False,
     ) -> None:
         if not model_adapter.exclusive_writer:
             raise ScModelError('SC runtime requires an exclusive writer')
         self.model_adapter = model_adapter
         self.renderer = renderer
         self.scope_resolver = scope_resolver
+        self.allow_shared_session_model = allow_shared_session_model
         # Prefer explicit ExclusiveScWriter; create one if omitted.
         if writer is None:
             from .sc_writer import ExclusiveScWriter
@@ -242,16 +244,25 @@ class ScModelRuntime:
         self.writer = writer
         self._lock = asyncio.Lock()
 
+    def commands(self, user_id, session_id):
+        """Expose the renderer's pending browser commands to the HTTP bridge."""
+        return self.renderer.commands(user_id, session_id)
+
+    def acknowledge(self, token, success):
+        """Forward browser confirmation to the renderer waiting for activation."""
+        return self.renderer.acknowledge(token, success)
+
     async def activate(self, interface_id: str, model: dict, *, user_id=None, session_id=None) -> None:
         physical_id = interface_id
         if session_id:
-            if not self.scope_resolver:
+            if self.scope_resolver:
+                physical_id = self.scope_resolver(interface_id, user_id, session_id)
+                if inspect.isawaitable(physical_id):
+                    physical_id = await physical_id
+                if not isinstance(physical_id, str) or not physical_id:
+                    raise ScModelError('SC session-specific model is unavailable')
+            elif not self.allow_shared_session_model:
                 raise ScModelError('SC session-specific model routing is not configured')
-            physical_id = self.scope_resolver(interface_id, user_id, session_id)
-            if inspect.isawaitable(physical_id):
-                physical_id = await physical_id
-            if not isinstance(physical_id, str) or not physical_id:
-                raise ScModelError('SC session-specific model is unavailable')
             parameters = inspect.signature(self.renderer.activate).parameters
             if 'session_id' not in parameters or 'user_id' not in parameters:
                 raise ScModelError('renderer does not support session routing')
