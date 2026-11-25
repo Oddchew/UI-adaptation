@@ -43,11 +43,18 @@ def _compare(value: float, threshold: float, op: CompareOp) -> bool:
     return False
 
 
-def _events(pkg: PackageAtoB, kind: Optional[str] = None, element_id: Optional[str] = None):
+def _events(
+    pkg: PackageAtoB,
+    kind: Optional[str] = None,
+    element_id: Optional[str] = None,
+    action_id: Optional[str] = None,
+):
     for e in pkg.interaction_events:
         if kind is not None and not _is_type(e.event_type, kind):
             continue
         if element_id is not None and (e.element_id or "") != element_id:
+            continue
+        if action_id is not None and e.action_id != action_id:
             continue
         yield e
 
@@ -115,8 +122,10 @@ def _metric(pkg: PackageAtoB, rule: AdaptationRule) -> tuple[float, list[str]]:
         return val, ids
 
     if tr.kind == TriggerKind.SUCCESS_COUNT:
-        evs = list(_events(pkg, EventType.SUCCESSFUL_ACTION.value, eid))
+        evs = list(_events(pkg, EventType.SUCCESSFUL_ACTION.value, eid, tr.action_id))
         ids = [e.id for e in evs]
+        if tr.action_id is not None:
+            return float(len(evs)), ids
         val = float(len(evs) if evs else _count_event_type(pkg, EventType.SUCCESSFUL_ACTION, eid))
         return val, ids
 
@@ -139,7 +148,20 @@ def rule_matches(pkg: PackageAtoB, rule: AdaptationRule) -> bool:
     if rule.trigger.require_no_success and _has_success(pkg):
         return False
     value, _ = _metric(pkg, rule)
-    return _compare(value, float(rule.trigger.threshold), rule.trigger.op)
+    if not _compare(value, float(rule.trigger.threshold), rule.trigger.op):
+        return False
+    if rule.action.target_element_id == "$output_target":
+        matching = [
+            event for event in pkg.interaction_events
+            if event.action_id == rule.trigger.action_id
+            and _is_type(event.event_type, EventType.SUCCESSFUL_ACTION)
+        ]
+        if not matching or not isinstance(matching[-1].new_value, dict):
+            return False
+        targets = matching[-1].new_value.get("output_target_ids")
+        if not isinstance(targets, list) or len(targets) != 1 or not isinstance(targets[0], str):
+            return False
+    return True
 
 
 def evaluate_declarative_rules(
@@ -159,6 +181,15 @@ def evaluate_declarative_rules(
             mean = score_entry
             samples = 0
         value, src_ids = _metric(pkg, rule)
+        target_element_id = rule.action.target_element_id
+        if target_element_id == "$output_target":
+            matching = [
+                event for event in pkg.interaction_events
+                if event.action_id == rule.trigger.action_id
+                and _is_type(event.event_type, EventType.SUCCESSFUL_ACTION)
+            ]
+            targets = matching[-1].new_value.get("output_target_ids", [])
+            target_element_id = targets[0]
         # Adjust priority: lower priority number = preferred.
         # Positive effectiveness lowers effective priority (boosts rule).
         adj = 0
@@ -170,7 +201,7 @@ def evaluate_declarative_rules(
         matches.append(
             RuleMatch(
                 rule_id=rule.id,
-                target_element_id=rule.action.target_element_id,
+                target_element_id=target_element_id,
                 property=rule.action.property,
                 old_value=rule.action.old_value,
                 new_value=rule.action.new_value,
