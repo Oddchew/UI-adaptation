@@ -201,6 +201,7 @@ async def _bootstrap() -> None:
     _module_c = ModuleC(
         _repository,
         _runtime,
+        timeout=float(os.environ.get("MODULE_C_TIMEOUT", "5.0" if USE_SC_C else "2.0")),
         sc_writer=None if USE_SC_C and sc_writer is not None else sc_writer,
     )
     _module_b.set_version_provider(_module_c.active_version)

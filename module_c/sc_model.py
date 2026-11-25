@@ -61,6 +61,7 @@ class ScUiModelAdapter:
         self.url = url
         self.exclusive_writer = exclusive_writer
         self._lock = asyncio.Lock()
+        self._key_cache = {}
 
     async def connect(self) -> None:
         from sc_client.client import connect, is_connected
@@ -70,9 +71,13 @@ class ScUiModelAdapter:
     def _key(self, identifier: str):
         from sc_client.client import resolve_keynodes
         from sc_client.models import ScIdtfResolveParams
+        cached = self._key_cache.get(identifier)
+        if cached is not None:
+            return cached
         addresses = resolve_keynodes(ScIdtfResolveParams(idtf=identifier, type=None))
         if not addresses or not addresses[0] or not addresses[0].is_valid():
             raise ScModelError(f'missing SC keynode: {identifier}')
+        self._key_cache[identifier] = addresses[0]
         return addresses[0]
 
     @staticmethod
