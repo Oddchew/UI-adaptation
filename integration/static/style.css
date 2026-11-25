@@ -13,3 +13,33 @@ footer{display:flex;justify-content:space-between;align-items:center;margin-top:
 body.theme-dark{color-scheme:dark;--bg:#18211d;--surface:#212e26;--ink:#edf4ed;--muted:#a3b3a5;--line:#34453a;--shadow:none}body.theme-dark .task-example,body.theme-dark .debug-body pre,body.theme-dark .version-row code{background:#29382e;border-color:#34463a}body.theme-dark .task-example code{color:#d0ddcd}body.theme-dark .task-card p,body.theme-dark .page-heading p{color:#a5b4a7}body.theme-dark .secondary-button{background:#2a3a2e;color:#b1cbb1;border-color:#3b4e3d}body.theme-dark .help-card{background:#313e27;border-color:#475a36}body.theme-dark .help-copy p{color:#c5d3b7}body.theme-dark .task-tag{background:#2c3b30}body.theme-dark .connection{background:#293c2e;border-color:#3c5942;color:#b1d1b3}
 @media(max-width:950px){.page{padding:30px 28px 0}.workspace{grid-template-columns:minmax(0,1.4fr) minmax(270px,.85fr);gap:16px}.heading-aside{display:none}.header-caption{display:none}}@media(max-width:700px){.topbar{height:65px;padding:0 20px}.page{padding:26px 18px 0}.page-heading{margin:27px 0 24px}.page-heading h1{letter-spacing:-1.3px}.workspace{grid-template-columns:1fr}.task-card{padding:22px}.task-example{gap:10px;flex-wrap:wrap}.editor-footer{align-items:flex-start;flex-direction:column}.editor-footer .button{width:100%}.help-badge{display:none}footer{gap:12px;align-items:flex-start;flex-direction:column}.stats{gap:4px}}
 .brand-mark{display:flex;align-items:center;justify-content:center}
+
+
+/* Generic SC UI model renderer */
+.sc-interface-root {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  min-height: 180px;
+  padding: 16px;
+  border: 1px solid var(--border, #d8dee8);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+}
+.sc-ui-component { box-sizing: border-box; max-width: 100%; }
+.sc-ui-window, .sc-ui-scroll, .sc-ui-menu, .sc-ui-menu_bar {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+.sc-ui-button, .sc-ui-menu_item, .sc-ui-select, .sc-ui-text_field, .sc-ui-text_area {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid #9aa4b2;
+  border-radius: 6px;
+}
+.sc-ui-button, .sc-ui-menu_item { cursor: pointer; }
+.sc-ui-text_area { min-height: 90px; resize: vertical; }
+.sc-image-placeholder { min-height: 64px; display: grid; place-items: center; border: 1px dashed #9aa4b2; border-radius: 8px; }
