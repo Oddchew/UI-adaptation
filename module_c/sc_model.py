@@ -11,7 +11,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
-from .model import COMPONENT_TYPES, PROPERTY_TYPES, component_by_id
+from .catalog import COMPONENT_TYPES, PROPERTY_TYPES, SC_NREL_FOR_LINK_KIND, component_allows_action_id
+from .model import component_by_id
 
 
 class ScModelError(RuntimeError):
@@ -159,17 +160,30 @@ class ScUiModelAdapter:
                     if identifier in ids:
                         raise ScAmbiguousModel('duplicate component ID')
                     ids.add(identifier)
-                    props = {key: self._property(node, key)[0] for key in PROPERTY_TYPES}
-                    components.append({'id': identifier, 'typeId': self._component_type(node), 'props': props})
+                    type_id = self._component_type(node)
+                    props = {}
+                    for key in PROPERTY_TYPES:
+                        if key == 'action_id' and not component_allows_action_id(type_id):
+                            continue
+                        props[key] = self._property(node, key)[0]
+                    components.append({'id': identifier, 'typeId': type_id, 'props': props})
                     addresses.append((node, identifier))
                 links = []
-                for parent, parent_id in addresses:
-                    for child in self._relations(parent, 'nrel_ui_contains'):
-                        matches = [identifier for addr, identifier in addresses if addr == child]
-                        if len(matches) != 1:
-                            raise ScAmbiguousModel('contains target is outside interface or ambiguous')
-                        links.append({'id': f'link_{len(links) + 1}', 'kind': 'contains',
-                                      'sourceId': parent_id, 'targetId': matches[0]})
+                # contains / input_target / output_target (catalog link kinds)
+                for kind, nrel in SC_NREL_FOR_LINK_KIND.items():
+                    for parent, parent_id in addresses:
+                        for child in self._relations(parent, nrel):
+                            matches = [identifier for addr, identifier in addresses if addr == child]
+                            if len(matches) != 1:
+                                raise ScAmbiguousModel(
+                                    f'{kind} target is outside interface or ambiguous'
+                                )
+                            links.append({
+                                'id': f'link_{len(links) + 1}',
+                                'kind': kind,
+                                'sourceId': parent_id,
+                                'targetId': matches[0],
+                            })
                 return {'id': interface_id, 'title': self._property(interface, 'name')[0],
                         'components': components, 'links': links}
             return await asyncio.to_thread(read)
