@@ -134,7 +134,7 @@ async def _bootstrap() -> None:
     global _module_a, _module_b, _module_c, _ready, _sc_ok, _sc_c_ok, _runtime, _repository
 
     cfg = ModuleAConfig(
-        COLD_START_THRESHOLD=2,
+        COLD_START_THRESHOLD=3,
         ERROR_RATE_THRESHOLD=0.25,
         HELP_THRESHOLD=3,
         PERIODIC_SNAPSHOT_MS=10 * 60 * 1000,
