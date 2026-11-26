@@ -154,16 +154,9 @@ class ModuleB:
                 reject_message="ручной режим / manual_override — авто-команды запрещены",
             )
 
-        # No automatic or event-driven command is emitted from a sparse observation window.
         n_events = len(pkg.interaction_events)
         if n_events == 0:
             n_events = int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
-        if n_events < cfg.MIN_EVENTS_IN_WINDOW:
-            return DecisionResult(
-                status=DecisionStatus.REJECTED,
-                reject_reason=RejectReason.INSUFFICIENT_DATA,
-                reject_message=f"событий в окне {n_events} < {cfg.MIN_EVENTS_IN_WINDOW}",
-            )
 
         version = None
         if self._version_provider:
@@ -202,6 +195,28 @@ class ModuleB:
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.CONSTRAINT_VIOLATION,
                 reject_message=f"запрещённая цель: {forbidden_matches[0].target_element_id}",
+            )
+
+        # A rule with its own explicit evidence threshold may act before the
+        # generic three-event window is full (e.g. two errors or a named action).
+        matched_rule_ids = {match.rule_id for match in matches}
+        matched_rules = [rule for rule in self._rules if rule.id in matched_rule_ids]
+        has_rule_specific_evidence = any(
+            (
+                rule.trigger.kind.value == "error_count"
+                and rule.trigger.threshold >= 2
+            )
+            or (
+                rule.trigger.kind.value == "success_count"
+                and bool(rule.trigger.action_id)
+            )
+            for rule in matched_rules
+        )
+        if n_events < cfg.MIN_EVENTS_IN_WINDOW and not has_rule_specific_evidence:
+            return DecisionResult(
+                status=DecisionStatus.REJECTED,
+                reject_reason=RejectReason.INSUFFICIENT_DATA,
+                reject_message=f"событий в окне {n_events} < {cfg.MIN_EVENTS_IN_WINDOW}",
             )
         if cfg.ANTI_FLICKER:
             session = (last.session_id or 'default') if last else 'default'

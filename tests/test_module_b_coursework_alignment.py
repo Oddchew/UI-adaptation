@@ -64,6 +64,15 @@ class ModuleBCourseworkAlignmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, DecisionStatus.REJECTED)
         self.assertEqual(result.reject_reason, RejectReason.INSUFFICIENT_DATA)
 
+    async def test_two_error_rule_can_fire_before_generic_three_event_window(self):
+        pkg = make_package([
+            event(EventType.ERROR, element_id="hints_panel", error_code="syntax"),
+            event(EventType.ERROR, element_id="hints_panel", error_code="runtime"),
+        ])
+        result = await self.make_b().decide(pkg)
+        self.assertEqual(result.status, DecisionStatus.COMMAND)
+        self.assertEqual(result.command.rule_id, "R_hint_after_2_errors")
+
     async def test_counts_errors_with_different_error_codes(self):
         pkg = make_package([
             event(EventType.ERROR, element_id="hints_panel", error_code="syntax"),
