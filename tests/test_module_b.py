@@ -148,6 +148,16 @@ async def run() -> None:
         "insufficient",
     )
 
+    empty_window = make_pkg()
+    empty_window.model_snapshot.counters.total_errors = 10
+    empty_window.model_snapshot.observation.event_count = 10
+    empty_window.observation_window = {"event_count": 10}
+    r = await b.decide(empty_window)
+    assert_(
+        r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.INSUFFICIENT_DATA,
+        "user-wide counters must not satisfy an empty session window",
+    )
+
     b.reset_anti_flicker()
     r = await b.decide(make_pkg(errors=3, n_pad=1))
     assert_(r.status == DecisionStatus.COMMAND and r.command is not None, "R1 command")
