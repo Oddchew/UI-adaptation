@@ -60,7 +60,7 @@ def is_forbidden_target(target_element_id: str, cfg: ModuleBConfig) -> bool:
     t = (target_element_id or "").lower()
     for forbidden in cfg.FORBIDDEN_TARGETS:
         fl = forbidden.lower()
-        if fl in t or t in fl:
+        if t == fl or t.startswith(fl + "."):
             return True
     return False
 
@@ -242,7 +242,7 @@ class ModuleB:
             session_id=session_id,
         )
 
-        if pkg.interface_id == 'python_tutor_model' and is_forbidden_target(cmd.target_element_id, cfg):
+        if is_forbidden_target(cmd.target_element_id, cfg):
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.CONSTRAINT_VIOLATION,
