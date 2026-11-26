@@ -180,9 +180,9 @@ class ModuleB:
             and last.event_type.value == 'successful_action'
             and last.action_id
         )
+        # The observation window is session-scoped. Never substitute user-wide
+        # counters when this interface/session has no events.
         n_events = len(pkg.interaction_events)
-        if n_events == 0:
-            n_events = int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
         if not explicit_action and n_events < cfg.MIN_EVENTS_IN_WINDOW:
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
