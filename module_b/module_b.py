@@ -202,7 +202,7 @@ class ModuleB:
         if last:
             scoped.interaction_events = [e for e in pkg.interaction_events if e.interface_id == pkg.interface_id and e.session_id == last.session_id]
         matches = evaluate_declarative_rules(scoped, self._rules)
-        if pkg.interface_id == 'python_tutor_model' and last and session_key(pkg.interface_id, last.session_id) in pkg.model_snapshot.hint_hidden_sessions:
+        if last and session_key(pkg.interface_id, last.session_id) in pkg.model_snapshot.hint_hidden_sessions:
             matches = [m for m in matches if m.target_element_id != 'hints_panel']
         if cfg.ANTI_FLICKER:
             session = (last.session_id or 'default') if last else 'default'
