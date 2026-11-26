@@ -38,9 +38,9 @@ class PackageBuilder:
             model_version=model.model_version,
             model_snapshot=snapshot,
             observation_window={
-                "start": model.observation.window_start,
-                "end": model.observation.window_end,
-                "event_count": model.observation.event_count,
+                "start": events[0].timestamp if events else "",
+                "end": events[-1].timestamp if events else "",
+                "event_count": len(events),
             },
             interaction_events=events,
             manual_override=manual_override or session_key(interface_id, session_id) in model.manual_mode_sessions,
