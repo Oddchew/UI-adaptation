@@ -190,13 +190,6 @@ class ModuleB:
                 property='visible', old_value=False, new_value=True, reason='пользователь развернул историю',
                 rule_id='user_open_history', source_event_ids=[last.id], created_at=_now_iso(), session_id=session_id))
 
-        if pkg.model_snapshot.is_cold_start and n_events < cfg.MIN_EVENTS_IN_WINDOW:
-            return DecisionResult(
-                status=DecisionStatus.REJECTED,
-                reject_reason=RejectReason.COLD_START,
-                reject_message="cold_start: адаптация отложена до накопления модели",
-            )
-
         import copy
         scoped = copy.copy(pkg)
         if last:

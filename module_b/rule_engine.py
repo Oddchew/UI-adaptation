@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from module_a.types import EventType, PackageAtoB, UserModel, session_key
+from module_a.types import EventType, PackageAtoB, session_key
 
 from .rule_schema import AdaptationRule, CompareOp, TriggerKind
 
