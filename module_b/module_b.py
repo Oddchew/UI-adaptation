@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional, Sequence, Union
 
-from module_a.types import PackageAtoB, PackageTrigger, session_key
+from module_a.types import PackageAtoB, PackageTrigger
 
 from .models import (
     DEFAULT_B_CONFIG,
@@ -57,10 +57,13 @@ def _load_rules(source: RulesSource) -> list[AdaptationRule]:
 
 
 def is_forbidden_target(target_element_id: str, cfg: ModuleBConfig) -> bool:
-    t = (target_element_id or "").lower()
+    """Reject protected UI state for every interface, not only the legacy tutor."""
+    target = (target_element_id or "").strip().lower()
+    if not target:
+        return False
     for forbidden in cfg.FORBIDDEN_TARGETS:
-        fl = forbidden.lower()
-        if fl in t or t in fl:
+        protected = forbidden.strip().lower()
+        if target == protected or target.startswith(protected + "."):
             return True
     return False
 
@@ -143,6 +146,18 @@ class ModuleB:
 
         last = pkg.interaction_events[-1] if pkg.interaction_events else None
         session_id = last.session_id if last else None
+        # Manual mode is an absolute veto and precedes every special-case path.
+        if pkg.manual_override or pkg.trigger == PackageTrigger.MANUAL_OVERRIDE:
+            return DecisionResult(
+                status=DecisionStatus.REJECTED,
+                reject_reason=RejectReason.MANUAL_OVERRIDE,
+                reject_message="ручной режим / manual_override — авто-команды запрещены",
+            )
+
+        n_events = len(pkg.interaction_events)
+        if n_events == 0:
+            n_events = int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
+
         version = None
         if self._version_provider:
             parameters = inspect.signature(self._version_provider).parameters
@@ -168,42 +183,41 @@ class ModuleB:
                 property='visible', old_value=False, new_value=True, reason='пользователь развернул историю',
                 rule_id='user_open_history', source_event_ids=[last.id], created_at=_now_iso(), session_id=session_id))
 
-        if pkg.manual_override or pkg.trigger == PackageTrigger.MANUAL_OVERRIDE:
-            return DecisionResult(
-                status=DecisionStatus.REJECTED,
-                reject_reason=RejectReason.MANUAL_OVERRIDE,
-                reject_message="ручной режим / manual_override — авто-команды запрещены",
-            )
-
-        explicit_action = bool(
-            last
-            and last.event_type.value == 'successful_action'
-            and last.action_id
-        )
-        n_events = len(pkg.interaction_events)
-        if n_events == 0:
-            n_events = int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
-        if not explicit_action and n_events < cfg.MIN_EVENTS_IN_WINDOW:
-            return DecisionResult(
-                status=DecisionStatus.REJECTED,
-                reject_reason=RejectReason.INSUFFICIENT_DATA,
-                reject_message=f"событий в окне {n_events} < {cfg.MIN_EVENTS_IN_WINDOW}",
-            )
-
-        if not explicit_action and pkg.model_snapshot.is_cold_start and n_events < 2:
-            return DecisionResult(
-                status=DecisionStatus.REJECTED,
-                reject_reason=RejectReason.COLD_START,
-                reject_message="cold_start: адаптация отложена до накопления модели",
-            )
-
         import copy
         scoped = copy.copy(pkg)
         if last:
             scoped.interaction_events = [e for e in pkg.interaction_events if e.interface_id == pkg.interface_id and e.session_id == last.session_id]
         matches = evaluate_declarative_rules(scoped, self._rules)
-        if pkg.interface_id == 'python_tutor_model' and last and session_key(pkg.interface_id, last.session_id) in pkg.model_snapshot.hint_hidden_sessions:
-            matches = [m for m in matches if m.target_element_id != 'hints_panel']
+        forbidden_matches = [m for m in matches if is_forbidden_target(m.target_element_id, cfg)]
+        matches = [m for m in matches if not is_forbidden_target(m.target_element_id, cfg)]
+        if not matches and forbidden_matches:
+            return DecisionResult(
+                status=DecisionStatus.REJECTED,
+                reject_reason=RejectReason.CONSTRAINT_VIOLATION,
+                reject_message=f"запрещённая цель: {forbidden_matches[0].target_element_id}",
+            )
+
+        # A rule with its own explicit evidence threshold may act before the
+        # generic three-event window is full (e.g. two errors or a named action).
+        matched_rule_ids = {match.rule_id for match in matches}
+        matched_rules = [rule for rule in self._rules if rule.id in matched_rule_ids]
+        has_rule_specific_evidence = any(
+            (
+                rule.trigger.kind.value == "error_count"
+                and rule.trigger.threshold >= 2
+            )
+            or (
+                rule.trigger.kind.value == "success_count"
+                and bool(rule.trigger.action_id)
+            )
+            for rule in matched_rules
+        )
+        if n_events < cfg.MIN_EVENTS_IN_WINDOW and not has_rule_specific_evidence:
+            return DecisionResult(
+                status=DecisionStatus.REJECTED,
+                reject_reason=RejectReason.INSUFFICIENT_DATA,
+                reject_message=f"событий в окне {n_events} < {cfg.MIN_EVENTS_IN_WINDOW}",
+            )
         if cfg.ANTI_FLICKER:
             session = (last.session_id or 'default') if last else 'default'
             matches = [m for m in matches if self._key(pkg.user_id, m.rule_id, session, pkg.interface_id) not in self._applied]
@@ -242,7 +256,7 @@ class ModuleB:
             session_id=session_id,
         )
 
-        if pkg.interface_id == 'python_tutor_model' and is_forbidden_target(cmd.target_element_id, cfg):
+        if is_forbidden_target(cmd.target_element_id, cfg):
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.CONSTRAINT_VIOLATION,
