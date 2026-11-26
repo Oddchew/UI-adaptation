@@ -153,6 +153,18 @@ class ModuleB:
                 reject_reason=RejectReason.MANUAL_OVERRIDE,
                 reject_message="ручной режим / manual_override — авто-команды запрещены",
             )
+
+        # No automatic or event-driven command is emitted from a sparse observation window.
+        n_events = len(pkg.interaction_events)
+        if n_events == 0:
+            n_events = int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
+        if n_events < cfg.MIN_EVENTS_IN_WINDOW:
+            return DecisionResult(
+                status=DecisionStatus.REJECTED,
+                reject_reason=RejectReason.INSUFFICIENT_DATA,
+                reject_message=f"событий в окне {n_events} < {cfg.MIN_EVENTS_IN_WINDOW}",
+            )
+
         version = None
         if self._version_provider:
             parameters = inspect.signature(self._version_provider).parameters
@@ -177,16 +189,6 @@ class ModuleB:
                 user_id=pkg.user_id, base_version_id=version, target_element_id='history_content',
                 property='visible', old_value=False, new_value=True, reason='пользователь развернул историю',
                 rule_id='user_open_history', source_event_ids=[last.id], created_at=_now_iso(), session_id=session_id))
-
-        n_events = len(pkg.interaction_events)
-        if n_events == 0:
-            n_events = int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
-        if n_events < cfg.MIN_EVENTS_IN_WINDOW:
-            return DecisionResult(
-                status=DecisionStatus.REJECTED,
-                reject_reason=RejectReason.INSUFFICIENT_DATA,
-                reject_message=f"событий в окне {n_events} < {cfg.MIN_EVENTS_IN_WINDOW}",
-            )
 
         if pkg.model_snapshot.is_cold_start and n_events < cfg.MIN_EVENTS_IN_WINDOW:
             return DecisionResult(

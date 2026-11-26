@@ -108,6 +108,15 @@ class ModuleBCourseworkAlignmentTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.status, DecisionStatus.REJECTED)
         self.assertEqual(result.reject_reason, RejectReason.NO_RULE_MATCHED)
 
+    async def test_sparse_hint_hide_event_does_not_send_a_command(self):
+        pkg = make_package(
+            [event(EventType.HINT_HIDE, interface_id="python_tutor_model")],
+            interface_id="python_tutor_model",
+        )
+        result = await self.make_b().decide(pkg)
+        self.assertEqual(result.status, DecisionStatus.REJECTED)
+        self.assertEqual(result.reject_reason, RejectReason.INSUFFICIENT_DATA)
+
     async def test_manual_override_vetoes_legacy_user_action_path(self):
         pkg = make_package(
             [event(EventType.HINT_HIDE, interface_id="python_tutor_model")],
