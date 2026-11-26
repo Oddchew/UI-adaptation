@@ -61,26 +61,13 @@ def _events(
 
 def _count_event_type(pkg: PackageAtoB, et: Any, element_id: Optional[str] = None) -> int:
     n = sum(1 for _ in _events(pkg, _et_value(et), element_id))
-    if n > 0:
-        return n
-    if pkg.interaction_events:
-        return 0
-    if element_id is not None:
-        return 0
-    c = pkg.model_snapshot.counters
-    if _is_type(et, EventType.ERROR):
-        return int(getattr(c, "total_errors", 0) or 0)
-    if _is_type(et, EventType.HELP_REQUEST):
-        return int(getattr(c, "help_requests", 0) or 0)
-    if _is_type(et, EventType.SUCCESSFUL_ACTION):
-        return int(getattr(c, "successful_actions", 0) or 0)
-    return 0
+    return n
 
 
 def _has_success(pkg: PackageAtoB) -> bool:
     if pkg.interaction_events:
         return any(_is_type(e.event_type, EventType.SUCCESSFUL_ACTION) and e.action_id == 'check_run' for e in pkg.interaction_events)
-    return int(getattr(pkg.model_snapshot.counters, "successful_actions", 0) or 0) > 0
+    return False
 
 
 def _hint_hidden(snap: UserModel) -> bool:
@@ -109,9 +96,9 @@ def _metric(pkg: PackageAtoB, rule: AdaptationRule) -> tuple[float, list[str]]:
         return val, ids
 
     if tr.kind == TriggerKind.ERROR_RATE:
-        rate = float(getattr(pkg.model_snapshot.observation, "recent_error_rate", 0.0) or 0.0)
-        ids = [e.id for e in _events(pkg, EventType.ERROR.value, eid)]
-        return rate, ids or [f"rate_{rate:.2f}"]
+        errors = list(_events(pkg, EventType.ERROR.value, eid))
+        rate = len(errors) / len(pkg.interaction_events) if pkg.interaction_events else 0.0
+        return rate, [e.id for e in errors]
 
     if tr.kind == TriggerKind.HELP_COUNT:
         evs = list(_events(pkg, EventType.HELP_REQUEST.value, eid))
@@ -131,8 +118,7 @@ def _metric(pkg: PackageAtoB, rule: AdaptationRule) -> tuple[float, list[str]]:
 
     if tr.kind == TriggerKind.EVENT_COUNT:
         evs = list(_events(pkg, None, eid))
-        n = len(evs) or int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
-        return float(n), [e.id for e in evs]
+        return float(len(evs)), [e.id for e in evs]
 
     if tr.kind == TriggerKind.ALWAYS:
         return 1.0, []
