@@ -60,7 +60,7 @@ def is_forbidden_target(target_element_id: str, cfg: ModuleBConfig) -> bool:
     t = (target_element_id or "").lower()
     for forbidden in cfg.FORBIDDEN_TARGETS:
         fl = forbidden.lower()
-        if fl in t or t in fl:
+        if t == fl or t.startswith(fl + "."):
             return True
     return False
 
@@ -180,9 +180,9 @@ class ModuleB:
             and last.event_type.value == 'successful_action'
             and last.action_id
         )
+        # The observation window is session-scoped. Never substitute user-wide
+        # counters when this interface/session has no events.
         n_events = len(pkg.interaction_events)
-        if n_events == 0:
-            n_events = int(getattr(pkg.model_snapshot.observation, "event_count", 0) or 0)
         if not explicit_action and n_events < cfg.MIN_EVENTS_IN_WINDOW:
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
@@ -202,7 +202,7 @@ class ModuleB:
         if last:
             scoped.interaction_events = [e for e in pkg.interaction_events if e.interface_id == pkg.interface_id and e.session_id == last.session_id]
         matches = evaluate_declarative_rules(scoped, self._rules)
-        if pkg.interface_id == 'python_tutor_model' and last and session_key(pkg.interface_id, last.session_id) in pkg.model_snapshot.hint_hidden_sessions:
+        if last and session_key(pkg.interface_id, last.session_id) in pkg.model_snapshot.hint_hidden_sessions:
             matches = [m for m in matches if m.target_element_id != 'hints_panel']
         if cfg.ANTI_FLICKER:
             session = (last.session_id or 'default') if last else 'default'
@@ -242,7 +242,7 @@ class ModuleB:
             session_id=session_id,
         )
 
-        if pkg.interface_id == 'python_tutor_model' and is_forbidden_target(cmd.target_element_id, cfg):
+        if is_forbidden_target(cmd.target_element_id, cfg):
             return DecisionResult(
                 status=DecisionStatus.REJECTED,
                 reject_reason=RejectReason.CONSTRAINT_VIOLATION,

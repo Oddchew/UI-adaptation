@@ -21,6 +21,7 @@ from module_a.types import (
     UserModel,
     UserPreferences,
     UserCharacteristics,
+    session_key,
 )
 from module_b import ModuleB, DecisionStatus, RejectReason
 
@@ -133,13 +134,42 @@ async def run() -> None:
     r = await b.decide(make_pkg(errors=5, n_pad=3, manual=True))
     assert_(r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.MANUAL_OVERRIDE, "manual")
 
-    r = await b.decide(make_pkg(errors=5, n_pad=3, cold=True))
-    assert_(r.status == DecisionStatus.COMMAND, "two errors are sufficient")
+    r = await b.decide(make_pkg(errors=2, cold=True))
+    assert_(
+        r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.INSUFFICIENT_DATA,
+        "two events are insufficient",
+    )
+
+    r = await b.decide(make_pkg(errors=2, n_pad=1, cold=True))
+    assert_(r.status == DecisionStatus.COMMAND, "three events are sufficient")
 
     r = await b.decide(make_pkg(errors=1))
     assert_(
         r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.INSUFFICIENT_DATA,
         "insufficient",
+    )
+
+    empty_window = make_pkg()
+    empty_window.model_snapshot.counters.total_errors = 10
+    empty_window.model_snapshot.observation.event_count = 10
+    empty_window.observation_window = {"event_count": 10}
+    r = await b.decide(empty_window)
+    assert_(
+        r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.INSUFFICIENT_DATA,
+        "user-wide counters must not satisfy an empty session window",
+    )
+
+    b.reset_anti_flicker()
+    hidden_pkg = make_pkg(errors=2, n_pad=1)
+    hidden_pkg.interface_id = "generic_ui"
+    for event in hidden_pkg.interaction_events:
+        event.interface_id = "generic_ui"
+        event.session_id = "session-1"
+    hidden_pkg.model_snapshot.hint_hidden_sessions = [session_key("generic_ui", "session-1")]
+    r = await b.decide(hidden_pkg)
+    assert_(
+        r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.NO_RULE_MATCHED,
+        "hidden hints stay hidden for generic interfaces in the same session",
     )
 
     b.reset_anti_flicker()
@@ -205,6 +235,30 @@ async def run() -> None:
     assert_(r.status == DecisionStatus.COMMAND and r.command is not None, "custom command")
     assert_(r.command is not None and r.command.rule_id == "R_theme_on_many_errors", "custom id")
     assert_(r.command is not None and r.command.new_value == "dark", "custom value")
+
+    forbidden_rule = [
+        {
+            "id": "R_forbidden_code_editor",
+            "trigger": {"kind": "error_count", "threshold": 2, "op": "gte"},
+            "action": {
+                "target_element_id": "code_editor",
+                "property": "visible",
+                "old_value": True,
+                "new_value": False,
+            },
+        }
+    ]
+    b_forbidden = ModuleB(rules=forbidden_rule)
+    b_forbidden.set_version_provider(lambda _: "ui_v1")
+    forbidden_pkg = make_pkg(errors=2, n_pad=1)
+    forbidden_pkg.interface_id = "generic_ui"
+    for event in forbidden_pkg.interaction_events:
+        event.interface_id = "generic_ui"
+    r = await b_forbidden.decide(forbidden_pkg)
+    assert_(
+        r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.CONSTRAINT_VIOLATION,
+        "forbidden targets are blocked for every interface",
+    )
 
     path = Path(__file__).resolve().parents[1] / "module_b" / "rules_default.json"
     b4 = ModuleB(rules=path)
