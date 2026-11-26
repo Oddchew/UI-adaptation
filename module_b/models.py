@@ -64,7 +64,7 @@ class DecisionResult:
 class ModuleBConfig:
     """Пороги и параметры Модуля B (ПЗ Короля + контракты A)."""
 
-    MIN_EVENTS_IN_WINDOW: int = 2
+    MIN_EVENTS_IN_WINDOW: int = 3
 
     # R1: показ hints / help panel после ошибок
     ERROR_COUNT_FOR_HINTS: int = 2

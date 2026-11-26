@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 
-from module_a.types import EventType, PackageAtoB, UserModel
+from module_a.types import EventType, PackageAtoB, UserModel, session_key
 
 from .rule_schema import AdaptationRule, CompareOp, TriggerKind
 
@@ -83,9 +83,14 @@ def _has_success(pkg: PackageAtoB) -> bool:
     return int(getattr(pkg.model_snapshot.counters, "successful_actions", 0) or 0) > 0
 
 
-def _hint_hidden(snap: UserModel) -> bool:
+def _hint_hidden(pkg: PackageAtoB) -> bool:
+    snap = pkg.model_snapshot
     if getattr(snap.preferences, "show_tooltips", None) is False:
         return True
+    if pkg.interaction_events:
+        last = pkg.interaction_events[-1]
+        hidden_key = session_key(pkg.interface_id, last.session_id)
+        return hidden_key in (getattr(snap, "hint_hidden_sessions", None) or [])
     return False
 
 
@@ -95,13 +100,6 @@ def _metric(pkg: PackageAtoB, rule: AdaptationRule) -> tuple[float, list[str]]:
 
     if tr.kind == TriggerKind.ERROR_COUNT:
         evs = list(_events(pkg, EventType.ERROR.value, eid))
-        if rule.id == 'R_hint_after_2_errors':
-            groups = {}
-            for e in evs:
-                if e.error_code:
-                    groups.setdefault((e.session_id, e.interface_id, e.element_id, e.error_code), []).append(e)
-            evs = max(groups.values(), key=len, default=[])
-            return float(len(evs)), [e.id for e in evs]
         ids = [e.id for e in evs]
         val = float(len(evs) if evs else _count_event_type(pkg, EventType.ERROR, eid))
         if not ids and val > 0:
@@ -143,7 +141,7 @@ def _metric(pkg: PackageAtoB, rule: AdaptationRule) -> tuple[float, list[str]]:
 def rule_matches(pkg: PackageAtoB, rule: AdaptationRule) -> bool:
     if not rule.enabled:
         return False
-    if rule.respect_hint_hidden and _hint_hidden(pkg.model_snapshot):
+    if rule.respect_hint_hidden and _hint_hidden(pkg):
         return False
     if rule.trigger.require_no_success and _has_success(pkg):
         return False

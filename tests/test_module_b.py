@@ -134,7 +134,7 @@ async def run() -> None:
     assert_(r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.MANUAL_OVERRIDE, "manual")
 
     r = await b.decide(make_pkg(errors=5, n_pad=3, cold=True))
-    assert_(r.status == DecisionStatus.COMMAND, "two errors are sufficient")
+    assert_(r.status == DecisionStatus.COMMAND, "cold-start package with at least three events")
 
     r = await b.decide(make_pkg(errors=1))
     assert_(
