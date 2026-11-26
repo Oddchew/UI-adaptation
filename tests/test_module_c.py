@@ -75,7 +75,7 @@ class ModuleCTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(component_by_id((await self.c.state('ui', 'alice', 's3'))[1], 'hints_panel')['props']['visible'])
 
     async def test_help_collapses_history_and_user_can_reopen(self):
-        cfg = ModuleAConfig(COLD_START_THRESHOLD=2, PERIODIC_SNAPSHOT_MS=0)
+        cfg = ModuleAConfig(COLD_START_THRESHOLD=3, PERIODIC_SNAPSHOT_MS=0)
         a = ModuleA(InMemoryStorage(cfg), cfg)
         b = ModuleB()
         demo_repo = MemoryRepository()
@@ -96,7 +96,7 @@ class ModuleCTests(unittest.IsolatedAsyncioTestCase):
         a.dispose()
 
     async def test_manual_mode_blocks_automatic_adaptation_per_session(self):
-        cfg = ModuleAConfig(COLD_START_THRESHOLD=2, PERIODIC_SNAPSHOT_MS=0)
+        cfg = ModuleAConfig(COLD_START_THRESHOLD=3, PERIODIC_SNAPSHOT_MS=0)
         a = ModuleA(InMemoryStorage(cfg), cfg)
         b = ModuleB()
         b.set_version_provider(self.c.active_version)
@@ -155,7 +155,7 @@ class ModuleCTests(unittest.IsolatedAsyncioTestCase):
             reopened.db.close()
 
     async def test_two_errors_show_then_hide_until_session_ends(self):
-        cfg = ModuleAConfig(COLD_START_THRESHOLD=2, PERIODIC_SNAPSHOT_MS=0)
+        cfg = ModuleAConfig(COLD_START_THRESHOLD=3, PERIODIC_SNAPSHOT_MS=0)
         a = ModuleA(InMemoryStorage(cfg), cfg)
         b = ModuleB()
         demo_repo = MemoryRepository()
@@ -172,6 +172,7 @@ class ModuleCTests(unittest.IsolatedAsyncioTestCase):
                 error_code='syntax' if kind == EventType.ERROR else None)
         await a.handle_event(event('1', EventType.ERROR))
         await a.handle_event(event('2', EventType.ERROR))
+        await a.handle_event(event('2b', EventType.FOCUS))
         self.assertTrue(component_by_id((await demo_c.state('python_tutor_model', 'u', 's'))[1], 'hints_panel')['props']['visible'])
         await a.handle_event(event('3', EventType.HINT_HIDE))
         self.assertFalse(component_by_id((await demo_c.state('python_tutor_model', 'u', 's'))[1], 'hints_panel')['props']['visible'])
