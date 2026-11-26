@@ -21,6 +21,7 @@ from module_a.types import (
     UserModel,
     UserPreferences,
     UserCharacteristics,
+    session_key,
 )
 from module_b import ModuleB, DecisionStatus, RejectReason
 
@@ -156,6 +157,19 @@ async def run() -> None:
     assert_(
         r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.INSUFFICIENT_DATA,
         "user-wide counters must not satisfy an empty session window",
+    )
+
+    b.reset_anti_flicker()
+    hidden_pkg = make_pkg(errors=2, n_pad=1)
+    hidden_pkg.interface_id = "generic_ui"
+    for event in hidden_pkg.interaction_events:
+        event.interface_id = "generic_ui"
+        event.session_id = "session-1"
+    hidden_pkg.model_snapshot.hint_hidden_sessions = [session_key("generic_ui", "session-1")]
+    r = await b.decide(hidden_pkg)
+    assert_(
+        r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.NO_RULE_MATCHED,
+        "hidden hints stay hidden for generic interfaces in the same session",
     )
 
     b.reset_anti_flicker()
