@@ -236,6 +236,30 @@ async def run() -> None:
     assert_(r.command is not None and r.command.rule_id == "R_theme_on_many_errors", "custom id")
     assert_(r.command is not None and r.command.new_value == "dark", "custom value")
 
+    forbidden_rule = [
+        {
+            "id": "R_forbidden_code_editor",
+            "trigger": {"kind": "error_count", "threshold": 2, "op": "gte"},
+            "action": {
+                "target_element_id": "code_editor",
+                "property": "visible",
+                "old_value": True,
+                "new_value": False,
+            },
+        }
+    ]
+    b_forbidden = ModuleB(rules=forbidden_rule)
+    b_forbidden.set_version_provider(lambda _: "ui_v1")
+    forbidden_pkg = make_pkg(errors=2, n_pad=1)
+    forbidden_pkg.interface_id = "generic_ui"
+    for event in forbidden_pkg.interaction_events:
+        event.interface_id = "generic_ui"
+    r = await b_forbidden.decide(forbidden_pkg)
+    assert_(
+        r.status == DecisionStatus.REJECTED and r.reject_reason == RejectReason.CONSTRAINT_VIOLATION,
+        "forbidden targets are blocked for every interface",
+    )
+
     path = Path(__file__).resolve().parents[1] / "module_b" / "rules_default.json"
     b4 = ModuleB(rules=path)
     b4.set_version_provider(lambda _: 'ui_v1')
