@@ -396,6 +396,8 @@ class ScModelRuntime:
                     )
                 if session_id:
                     await self.renderer.activate(interface_id, model, user_id=user_id, session_id=session_id)
+                elif 'user_id' in inspect.signature(self.renderer.activate).parameters:
+                    await self.renderer.activate(interface_id, model, user_id=user_id)
                 else:
                     await self.renderer.activate(interface_id, model)
                 if debug:
