@@ -1,35 +1,23 @@
 # Проверка полного цикла SC UI action
 
-Этот пример проверяет не только отрисовку, но и передачу контекста действия через
-Module A → Module B → Module C с подтверждением применения в браузере.
+Этот пример проверяет полный цикл Module A → Module B → Module C: событие кнопки,
+передачу контекста input/output target, изменение SC-модели и подтверждение браузером.
 
-## 1. Создайте интерфейс в ostis-ui-editor
+## 1. Установите тестовый интерфейс в SC-память
 
-Создайте **новый** интерфейс с ID `ui_action_test`. Не изменяйте `ex_calendar`.
+Интерфейс уже описан в файле `examples/ui_action_test.scs`. Создавать его вручную
+в ostis-ui-editor не требуется. Fixture создаёт отдельный интерфейс `ui_action_test`
+с четырьмя компонентами:
 
-Добавьте четыре компонента:
+- `main_window` — корневое окно;
+- `show_button` — кнопка с `action_id=show_status_panel`;
+- `message_input` — поле ввода;
+- `status_panel` — панель результата, изначально `visible=false`.
 
-| ID | Тип | Основные свойства |
-|---|---|---|
-| `main_window` | window | name: Action test |
-| `show_button` | button | text_value: Показать результат; action_id: `show_status_panel` |
-| `message_input` | text_field | name: Сообщение; text_value: Введите текст |
-| `status_panel` | window | name: Результат; visible: `false` |
-
-Установите вложенность через `nrel_ui_contains`:
-
-- `main_window` → `show_button`
-- `main_window` → `message_input`
-- `main_window` → `status_panel`
-
-Добавьте связи от кнопки:
-
-- `show_button` → `message_input` через `nrel_ui_input_target`;
-- `show_button` → `status_panel` через `nrel_ui_output_target`.
-
-Важно: `action_id` задаётся именно у кнопки; у панели изначально должно быть
-`visible=false`. Все четыре компонента должны входить в `nrel_ui_has_component`
-интерфейса. Сохраните интерфейс в SC-память.
+Связи `nrel_ui_contains`, `nrel_ui_input_target`, `nrel_ui_output_target` и
+`nrel_ui_has_component` уже включены в fixture. Импортируйте
+`examples/ui_action_test.scs` в ту же SC-базу знаний, к которой подключён runtime.
+Не изменяйте `ex_calendar`.
 
 ## 2. Запустите runtime с правилом
 
@@ -42,10 +30,10 @@ MODULE_C_USE_SC=1 \
 PYTHONPATH=. python3 integration/server.py
 ```
 
-Не включайте `MODULE_C_ALLOW_SHARED_SESSION_MODEL=1`: для этого сценария используется
-интерфейсная SC-модель без отдельной модели на сессию. Параметр `sessionless=1`
-отключает генерацию `session_id` только для открытой вкладки; остальные интерфейсы
-сохраняют обычную маршрутизацию по сессиям.
+Не включайте `MODULE_C_ALLOW_SHARED_SESSION_MODEL=1`: используется интерфейсная
+SC-модель без отдельной модели на сессию. Параметр `sessionless=1` отключает
+генерацию `session_id` только для открытой вкладки; остальные интерфейсы сохраняют
+обычную маршрутизацию по сессиям.
 
 Откройте:
 
@@ -54,8 +42,8 @@ http://127.0.0.1:8765/?interface_id=ui_action_test&sessionless=1
 ```
 
 Изменение `visible` записывается в общую модель интерфейса `ui_action_test`, а не
-в персональную модель пользователя или вкладки. Для проверки используйте отдельный
-тестовый интерфейс, не рабочий `ex_calendar`.
+в персональную модель пользователя или вкладки. Это отдельный тестовый интерфейс,
+поэтому рабочий `ex_calendar` не затрагивается.
 
 ## 3. Проверьте сценарий
 
@@ -64,10 +52,10 @@ http://127.0.0.1:8765/?interface_id=ui_action_test&sessionless=1
 3. Нажмите «Показать результат».
 4. Панель должна стать видимой после подтверждения обновления браузером.
 
-Правило в `ui_action_test.rules.json` срабатывает только для `action_id=show_status_panel`
-и разрешает цель через единственную связь `nrel_ui_output_target`. Module B получает
-значения `nrel_ui_input_target` в контексте события. Module C проверяет компонент,
-свойство, whitelist и старое значение `false`, затем обновляет SC-свойство `visible`.
+Правило срабатывает только для `action_id=show_status_panel` и разрешает цель через
+единственную связь `nrel_ui_output_target`. Module B получает значения
+`nrel_ui_input_target` в контексте события. Module C проверяет компонент, свойство,
+whitelist и старое значение `false`, затем обновляет SC-свойство `visible`.
 Браузер подтверждает применение команды через runtime acknowledgement.
 
 ## 4. Диагностика
