@@ -39,7 +39,7 @@ function sendEvent(payload) {
 }
 
 function applyStyle(element, props) {
-  if (props.visible === false) element.hidden = true;
+  if (props.visible !== undefined) element.hidden = props.visible === false;
   if (props.opacity !== undefined) element.style.opacity = String(props.opacity);
   if (props.width !== undefined) element.style.width = props.width + 'px';
   if (props.height !== undefined) element.style.height = props.height + 'px';
