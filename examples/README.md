@@ -39,19 +39,23 @@ Module A → Module B → Module C с подтверждением примен�
 ADAPTATION_RULES="$PWD/examples/ui_action_test.rules.json" \
 MODULE_A_USE_SC=1 \
 MODULE_C_USE_SC=1 \
-MODULE_C_ALLOW_SHARED_SESSION_MODEL=1 \
 PYTHONPATH=. python3 integration/server.py
 ```
 
-`MODULE_C_ALLOW_SHARED_SESSION_MODEL=1` разрешает запись в общую SC-модель для
-локальной однопользовательской проверки. Не используйте этот режим в многопользовательской
-среде: он не изолирует вкладки и пользователей.
+Не включайте `MODULE_C_ALLOW_SHARED_SESSION_MODEL=1`: для этого сценария используется
+интерфейсная SC-модель без отдельной модели на сессию. Параметр `sessionless=1`
+отключает генерацию `session_id` только для открытой вкладки; остальные интерфейсы
+сохраняют обычную маршрутизацию по сессиям.
 
 Откройте:
 
 ```
-http://127.0.0.1:8765/?interface_id=ui_action_test
+http://127.0.0.1:8765/?interface_id=ui_action_test&sessionless=1
 ```
+
+Изменение `visible` записывается в общую модель интерфейса `ui_action_test`, а не
+в персональную модель пользователя или вкладки. Для проверки используйте отдельный
+тестовый интерфейс, не рабочий `ex_calendar`.
 
 ## 3. Проверьте сценарий
 
