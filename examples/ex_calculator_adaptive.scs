@@ -1,0 +1,66 @@
+// Extension fixture for the existing ex_calculator interface.
+// Adds a hidden adaptive panel and binds the calculator action to its output target.
+// Does not alter the original calculator components or ex_calendar.
+
+ex_calculator_adapt_cmp_7
+<- concept_ui_window;;
+ex_calculator_adapt_cmp_7 => nrel_ui_id: [ex_calculator_adapt_cmp_7];;
+
+ex_calculator_adapt_cmp_7_name
+<- concept_ui_name;
+=> nrel_ui_value: [Adaptive panel];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_text
+<- concept_ui_text_value;
+=> nrel_ui_value: [Вы выполнили два вычисления. Дополнительная панель включена автоматически.];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_visible
+<- concept_ui_visible;
+=> nrel_ui_value: [false];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_enabled
+<- concept_ui_enabled;
+=> nrel_ui_value: [true];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_x
+<- concept_ui_x;
+=> nrel_ui_value: [100];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_y
+<- concept_ui_y;
+=> nrel_ui_value: [260];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_width
+<- concept_ui_width;
+=> nrel_ui_value: [320];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_height
+<- concept_ui_height;
+=> nrel_ui_value: [64];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_order
+<- concept_ui_order;
+=> nrel_ui_value: [7];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_background
+<- concept_ui_background_color;
+=> nrel_ui_value: [#e8f2ff];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator_adapt_cmp_7_color
+<- concept_ui_color;
+=> nrel_ui_value: [#17365d];
+-> ex_calculator_adapt_cmp_7;;
+
+ex_calculator => nrel_ui_has_component: ex_calculator_adapt_cmp_7;;
+ex_calculator_cmp_1 => nrel_ui_contains: ex_calculator_adapt_cmp_7;;
+ex_calculator_cmp_4 => nrel_ui_output_target: ex_calculator_adapt_cmp_7;;
