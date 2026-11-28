@@ -3,21 +3,28 @@
 Этот пример проверяет полный цикл Module A → Module B → Module C: событие кнопки,
 передачу контекста input/output target, изменение SC-модели и подтверждение браузером.
 
-## 1. Установите тестовый интерфейс в SC-память
+## 1. Автоматически установите тестовый интерфейс
 
-Интерфейс уже описан в файле `examples/ui_action_test.scs`. Создавать его вручную
-в ostis-ui-editor не требуется. Fixture создаёт отдельный интерфейс `ui_action_test`
-с четырьмя компонентами:
+Интерфейс уже описан в `examples/ui_action_test.scs`. Создавать его вручную
+в ostis-ui-editor не требуется. Из корня репозитория выполните:
 
-- `main_window` — корневое окно;
-- `show_button` — кнопка с `action_id=show_status_panel`;
-- `message_input` — поле ввода;
-- `status_panel` — панель результата, изначально `visible=false`.
+```bash
+bash examples/install_ui_action_fixture.sh
+```
 
-Связи `nrel_ui_contains`, `nrel_ui_input_target`, `nrel_ui_output_target` и
-`nrel_ui_has_component` уже включены в fixture. Импортируйте
-`examples/ui_action_test.scs` в ту же SC-базу знаний, к которой подключён runtime.
-Не изменяйте `ex_calendar`.
+Скрипт копирует fixture в `$HOME/Sundries/ostis/ostis-example-app/knowledge-base/module_a`,
+добавляет `knowledge-base` в `repo.path`, если это необходимо, и запускает
+`./scripts/start.sh build_kb`. Если ostis-example-app расположен в другом месте,
+задайте `OSTIS_EXAMPLE_APP=/путь/к/ostis-example-app`.
+
+Fixture создаёт отдельный интерфейс `ui_action_test` с четырьмя компонентами:
+`main_window`, `show_button`, `message_input` и `status_panel`. Кнопка имеет
+`action_id=show_status_panel`, панель изначально `visible=false`; связи
+`nrel_ui_contains`, `nrel_ui_input_target`, `nrel_ui_output_target` и
+`nrel_ui_has_component` уже описаны. Рабочий `ex_calendar` не изменяется.
+
+Если SC machine уже работала во время пересборки KB, перезапустите её, чтобы она
+загрузила обновлённую базу знаний.
 
 ## 2. Запустите runtime с правилом
 
@@ -42,8 +49,7 @@ http://127.0.0.1:8765/?interface_id=ui_action_test&sessionless=1
 ```
 
 Изменение `visible` записывается в общую модель интерфейса `ui_action_test`, а не
-в персональную модель пользователя или вкладки. Это отдельный тестовый интерфейс,
-поэтому рабочий `ex_calendar` не затрагивается.
+в персональную модель пользователя или вкладки.
 
 ## 3. Проверьте сценарий
 
