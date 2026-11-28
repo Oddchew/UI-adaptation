@@ -1,0 +1,25 @@
+[
+  {
+    "id": "calculator_show_adaptive_panel_after_two_calculations",
+    "description": "Показать дополнительную панель после двух успешных действий калькулятора",
+    "priority": 1,
+    "enabled": true,
+    "trigger": {
+      "kind": "success_count",
+      "threshold": 2,
+      "op": "gte",
+      "element_id": "ex_calculator_cmp_4",
+      "action_id": "action_calculate_or_append"
+    },
+    "action": {
+      "target_element_id": "$output_target",
+      "property": "visible",
+      "old_value": false,
+      "new_value": true
+    },
+    "constraints": [
+      "не изменять выражение пользователя",
+      "не изменять исходные компоненты калькулятора"
+    ]
+  }
+]
