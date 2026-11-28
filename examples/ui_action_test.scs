@@ -1,0 +1,166 @@
+// Generated fixture for the Module A -> B -> C action/ack integration test.
+// Import this file into the same SC knowledge base used by ostis-ui-editor.
+// It deliberately uses a dedicated interface ID and does not modify ex_calendar.
+
+ui_action_test
+<- concept_ui_interface;;
+
+ui_action_test => nrel_ui_id: [ui_action_test];;
+
+ui_action_test_name
+<- concept_ui_name;
+=> nrel_ui_value: [Action test];
+-> ui_action_test;;
+
+main_window
+<- concept_ui_window;;
+main_window => nrel_ui_id: [main_window];;
+main_window_name
+<- concept_ui_name;
+=> nrel_ui_value: [Action test];
+-> main_window;;
+main_window_visible
+<- concept_ui_visible;
+=> nrel_ui_value: [true];
+-> main_window;;
+main_window_x
+<- concept_ui_x;
+=> nrel_ui_value: [40];
+-> main_window;;
+main_window_y
+<- concept_ui_y;
+=> nrel_ui_value: [40];
+-> main_window;;
+main_window_width
+<- concept_ui_width;
+=> nrel_ui_value: [520];
+-> main_window;;
+main_window_height
+<- concept_ui_height;
+=> nrel_ui_value: [300];
+-> main_window;;
+
+show_button
+<- concept_ui_button;;
+show_button => nrel_ui_id: [show_button];;
+show_button_name
+<- concept_ui_name;
+=> nrel_ui_value: [Показать результат];
+-> show_button;;
+show_button_text
+<- concept_ui_text_value;
+=> nrel_ui_value: [Показать результат];
+-> show_button;;
+show_button_action
+<- concept_ui_action_id;
+=> nrel_ui_value: [show_status_panel];
+-> show_button;;
+show_button_visible
+<- concept_ui_visible;
+=> nrel_ui_value: [true];
+-> show_button;;
+show_button_enabled
+<- concept_ui_enabled;
+=> nrel_ui_value: [true];
+-> show_button;;
+show_button_x
+<- concept_ui_x;
+=> nrel_ui_value: [70];
+-> show_button;;
+show_button_y
+<- concept_ui_y;
+=> nrel_ui_value: [90];
+-> show_button;;
+show_button_width
+<- concept_ui_width;
+=> nrel_ui_value: [180];
+-> show_button;;
+show_button_height
+<- concept_ui_height;
+=> nrel_ui_value: [40];
+-> show_button;;
+
+message_input
+<- concept_ui_text_field;;
+message_input => nrel_ui_id: [message_input];;
+message_input_name
+<- concept_ui_name;
+=> nrel_ui_value: [Сообщение];
+-> message_input;;
+message_input_text
+<- concept_ui_text_value;
+=> nrel_ui_value: [Введите текст];
+-> message_input;;
+message_input_visible
+<- concept_ui_visible;
+=> nrel_ui_value: [true];
+-> message_input;;
+message_input_enabled
+<- concept_ui_enabled;
+=> nrel_ui_value: [true];
+-> message_input;;
+message_input_x
+<- concept_ui_x;
+=> nrel_ui_value: [70];
+-> message_input;;
+message_input_y
+<- concept_ui_y;
+=> nrel_ui_value: [150];
+-> message_input;;
+message_input_width
+<- concept_ui_width;
+=> nrel_ui_value: [360];
+-> message_input;;
+message_input_height
+<- concept_ui_height;
+=> nrel_ui_value: [36];
+-> message_input;;
+
+status_panel
+<- concept_ui_window;;
+status_panel => nrel_ui_id: [status_panel];;
+status_panel_name
+<- concept_ui_name;
+=> nrel_ui_value: [Результат];
+-> status_panel;;
+status_panel_text
+<- concept_ui_text_value;
+=> nrel_ui_value: [Результат действия];
+-> status_panel;;
+status_panel_visible
+<- concept_ui_visible;
+=> nrel_ui_value: [false];
+-> status_panel;;
+status_panel_enabled
+<- concept_ui_enabled;
+=> nrel_ui_value: [true];
+-> status_panel;;
+status_panel_x
+<- concept_ui_x;
+=> nrel_ui_value: [70];
+-> status_panel;;
+status_panel_y
+<- concept_ui_y;
+=> nrel_ui_value: [205];
+-> status_panel;;
+status_panel_width
+<- concept_ui_width;
+=> nrel_ui_value: [360];
+-> status_panel;;
+status_panel_height
+<- concept_ui_height;
+=> nrel_ui_value: [70];
+-> status_panel;;
+
+ui_action_test => nrel_ui_has_component: main_window;;
+ui_action_test => nrel_ui_has_component: show_button;;
+ui_action_test => nrel_ui_has_component: message_input;;
+ui_action_test => nrel_ui_has_component: status_panel;;
+
+ui_action_test => nrel_ui_contains: main_window;;
+main_window => nrel_ui_contains: show_button;;
+main_window => nrel_ui_contains: message_input;;
+main_window => nrel_ui_contains: status_panel;;
+
+show_button => nrel_ui_input_target: message_input;;
+show_button => nrel_ui_output_target: status_panel;;
