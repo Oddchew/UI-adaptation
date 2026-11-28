@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-HTTP-сервер: UI ↔ Module A ↔ Module B ↔ Mock C ↔ (опционально) sc-server.
+HTTP-сервер: UI ↔ Module A ↔ Module B ↔ Module C ↔ (опционально) sc-server.
 
 Запуск (из корня UI-adaptation):
   python3 integration/server.py
@@ -11,7 +11,8 @@ HTTP-сервер: UI ↔ Module A ↔ Module B ↔ Mock C ↔ (опционал
   SC_WS_URL=ws://127.0.0.1:8090/ws_json
   MODULE_A_USE_SC=0          # 0 = только in-memory для модели пользователя
   MODULE_C_USE_SC=0          # 1 = Module C пишет свойства UI через ExclusiveScWriter + ScModelRuntime
-  ADAPTATION_RULES=path/to/ui.adaptation.json   # правила из редактора; иначе DEFAULT
+  MODULE_C_ALLOW_SHARED_SESSION_MODEL  # default 1 when MODULE_C_USE_SC=1 (browser always sends session_id)
+  ADAPTATION_RULES=path/to/ui.adaptation.json   # правила из редактора; иначе rules_default.json / DEFAULT_RULES
 """
 
 from __future__ import annotations
@@ -50,7 +51,12 @@ PORT = int(os.environ.get("MODULE_A_PORT", "8765"))
 SC_WS = os.environ.get("SC_WS_URL", "ws://127.0.0.1:8090/ws_json")
 USE_SC = os.environ.get("MODULE_A_USE_SC", "0") not in ("0", "false", "False")
 USE_SC_C = os.environ.get("MODULE_C_USE_SC", "0") not in ("0", "false", "False")
-USE_SC_SHARED_SESSION_MODEL = os.environ.get("MODULE_C_ALLOW_SHARED_SESSION_MODEL", "0") not in ("0", "false", "False")
+# Default shared SC model when MODULE_C_USE_SC=1: browser always sends session_id,
+# and without this flag ScModelRuntime rejects activate (adaptation appears "broken").
+_shared_default = "1" if USE_SC_C else "0"
+USE_SC_SHARED_SESSION_MODEL = os.environ.get(
+    "MODULE_C_ALLOW_SHARED_SESSION_MODEL", _shared_default
+) not in ("0", "false", "False")
 RULES_PATH = os.environ.get("ADAPTATION_RULES", "").strip()
 
 # --- runtime state ---
@@ -60,6 +66,7 @@ _module_b: Optional[ModuleB] = None
 _module_c: Optional[ModuleC] = None
 _repository = None
 _runtime = None
+_browser = None  # always the pending/ack endpoint (BrowserRuntime)
 _packages: list[dict[str, Any]] = []
 _ready = False
 _sc_ok = False
@@ -131,7 +138,7 @@ def _run(coro):
 
 
 async def _bootstrap() -> None:
-    global _module_a, _module_b, _module_c, _ready, _sc_ok, _sc_c_ok, _runtime, _repository
+    global _module_a, _module_b, _module_c, _ready, _sc_ok, _sc_c_ok, _runtime, _browser, _repository
 
     cfg = ModuleAConfig(
         COLD_START_THRESHOLD=2,
@@ -152,26 +159,26 @@ async def _bootstrap() -> None:
         print("[module-a] in-memory only")
 
     _module_a = ModuleA(storage, cfg)
-    # Реальный Module B: правила из редактора (.adaptation.json) или DEFAULT_RULES
+    # Rules: ADAPTATION_RULES path, else rules_default.json / built-in DEFAULT_RULES.
+    # Empty rules when MODULE_C_USE_SC=1 previously disabled all adaptation — fixed.
     rules_src = RULES_PATH if RULES_PATH else None
     if rules_src:
         print(f"[module-b] rules file: {rules_src}")
-    elif not USE_SC_C:
+    else:
         default_json = ROOT / "module_b" / "rules_default.json"
         if default_json.is_file():
             rules_src = str(default_json)
             print(f"[module-b] rules file: {rules_src}")
         else:
             print("[module-b] built-in DEFAULT_RULES")
-    else:
-        print("[module-b] no generic rules configured; set ADAPTATION_RULES")
-    _module_b = ModuleB(rules=rules_src if rules_src else ([] if USE_SC_C else None))
+    _module_b = ModuleB(rules=rules_src)  # None → DEFAULT_RULES
     _repository = SQLiteRepository(os.environ.get('MODULE_C_DB', str(ROOT / 'module_c.sqlite3')))
     # The SC-backed path discovers each interface by interface_id on demand.
     # The Python tutor seed is retained only for the standalone legacy demo.
     if not USE_SC_C and not await _repository.current('python_tutor_model'):
         _repository.register('python_tutor_model', default_model())
     browser = BrowserRuntime()
+    _browser = browser
     _runtime = browser
     sc_writer = None
     if USE_SC_C:
@@ -189,7 +196,10 @@ async def _bootstrap() -> None:
                 writer=sc_writer,
                 allow_shared_session_model=USE_SC_SHARED_SESSION_MODEL,
             )
-            print(f"[module-c] SC writer enabled ({SC_WS})")
+            print(
+                f"[module-c] SC writer enabled ({SC_WS}), "
+                f"shared_session_model={USE_SC_SHARED_SESSION_MODEL}"
+            )
         except Exception as exc:
             _sc_c_ok = False
             print(f"[module-c] MODULE_C_USE_SC failed, falling back to browser only: {exc}")
@@ -370,8 +380,10 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/runtime/pending':
             query = parse_qs(parsed.query)
+            # Always poll BrowserRuntime (ScModelRuntime has no pending queue of its own).
+            runtime = _browser if _browser is not None else _runtime
             async def pending():
-                return _runtime.commands(query.get('user_id', [None])[0], query.get('session_id', [None])[0])
+                return runtime.commands(query.get('user_id', [None])[0], query.get('session_id', [None])[0])
             _json_response(self, 200, {'commands': _run(pending())})
             return
 
@@ -420,8 +432,9 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == '/api/runtime/ack':
             data = _read_json(self)
+            runtime = _browser if _browser is not None else _runtime
             async def ack():
-                _runtime.acknowledge(data.get('token'), data.get('success') is True)
+                runtime.acknowledge(data.get('token'), data.get('success') is True)
             _run(ack())
             _json_response(self, 200, {'ok': True})
             return
@@ -496,44 +509,28 @@ class Handler(BaseHTTPRequestHandler):
             )
             return
 
-        if path == "/api/reset-b":
-            assert _module_b is not None
-            _module_b.reset_anti_flicker()
-            _json_response(self, 200, {"ok": True})
-            return
-
         _json_response(self, 404, {"error": "not found"})
 
     def _serve_file(self, path: Path, content_type: str) -> None:
         if not path.is_file():
-            _json_response(self, 404, {"error": "file not found", "path": str(path)})
+            _json_response(self, 404, {"error": "not found"})
             return
         data = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(data)))
-        self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(data)
 
 
 def main() -> None:
-    if not STATIC.is_dir():
-        print(f"Нет каталога static: {STATIC}")
-        sys.exit(1)
-
     _start_async_loop()
     server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
-    print(f"[module-a] UI:  http://127.0.0.1:{PORT}/")
-    print(f"[module-a] API: http://127.0.0.1:{PORT}/api/health")
+    print(f"[http] http://127.0.0.1:{PORT}/")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nstop")
-    finally:
-        if _module_a:
-            _module_a.dispose()
-        server.server_close()
+        print("\n[http] stop")
 
 
 if __name__ == "__main__":
