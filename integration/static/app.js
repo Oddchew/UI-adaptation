@@ -1,10 +1,12 @@
 const USER = 'user_demo';
-const SESSION = crypto.randomUUID();
 const params = new URLSearchParams(location.search);
+const SESSION = params.get('session_id') || (params.get('sessionless') === '1' ? null : crypto.randomUUID());
 const INTERFACE = params.get('interface_id') || 'python_tutor_model';
-const CONTEXT = 'user_id=' + encodeURIComponent(USER) +
-  '&session_id=' + encodeURIComponent(SESSION) +
-  '&interface_id=' + encodeURIComponent(INTERFACE);
+const CONTEXT = [
+  'user_id=' + encodeURIComponent(USER),
+  ...(SESSION ? ['session_id=' + encodeURIComponent(SESSION)] : []),
+  'interface_id=' + encodeURIComponent(INTERFACE)
+].join('&');
 const seen = new Set();
 let feedbackTimer;
 
@@ -26,7 +28,7 @@ function feedback(message) {
 function sendEvent(payload) {
   return api('/api/event', {
     method: 'POST',
-    body: JSON.stringify({user_id: USER, interface_id: INTERFACE, session_id: SESSION, ...payload})
+    body: JSON.stringify({user_id: USER, interface_id: INTERFACE, ...(SESSION ? {session_id: SESSION} : {}), ...payload})
   }).then(async result => {
     if (result.model) {
       document.getElementById('model-view').textContent = JSON.stringify(result.model, null, 2);
