@@ -65,6 +65,22 @@ class ScModelRuntimeBridgeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(adapter.reads, [])
 
+    async def test_unscoped_activation_routes_renderer_command_by_user(self):
+        adapter = FakeAdapter(tutor_model())
+        renderer = FakeRenderer()
+        runtime = ScModelRuntime(adapter, renderer, writer=FakeWriter())
+
+        await runtime.activate(
+            "python_tutor_model", tutor_model(),
+            user_id="user-1", session_id=None,
+        )
+
+        self.assertEqual(adapter.reads, ["python_tutor_model"])
+        self.assertEqual(
+            renderer.activations,
+            [("python_tutor_model", "user-1", None)],
+        )
+
     async def test_explicit_shared_session_demo_uses_common_sc_model(self):
         adapter = FakeAdapter(tutor_model())
         renderer = FakeRenderer()
